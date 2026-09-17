@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-function redirect(string $path): void
+function redirect(string $path): never
 {
     header('Location: ' . $path);
     exit;
@@ -10,7 +10,7 @@ function redirect(string $path): void
 
 function e(string $value): string
 {
-    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
 function setFlash(string $type, string $message): void
@@ -52,10 +52,12 @@ function currentUser(): ?array
     if (!isLoggedIn()) {
         return null;
     }
+
     try {
         $stmt = Database::getInstance()->prepare('SELECT * FROM users WHERE id = :id LIMIT 1');
         $stmt->execute([':id' => (int) $_SESSION['user_id']]);
-        return $stmt->fetch() ?: null;
+        $user = $stmt->fetch();
+        return $user ?: null;
     } catch (Throwable $e) {
         return null;
     }

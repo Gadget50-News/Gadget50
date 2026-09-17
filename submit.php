@@ -7,7 +7,7 @@ requireLogin('login.php');
 
 $user = currentUser();
 $pdo = Database::getInstance();
-$categories = $pdo->query("SELECT * FROM categories WHERE status = 'active' ORDER BY name ASC")->fetchAll();
+$categories = $pdo->query("SELECT id, name FROM categories WHERE status = 'active' ORDER BY name ASC")->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
@@ -37,9 +37,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $flash = getFlash();
 ?>
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Submit News | Gadget 50</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head>
-<body class="bg-light"><div class="container py-5"><div class="row justify-content-center"><div class="col-lg-8"><div class="card shadow-sm border-0"><div class="card-body p-4">
-<div class="d-flex justify-content-between align-items-center mb-3"><h2 class="mb-0">Submit News</h2><a href="index.php" class="btn btn-outline-secondary btn-sm">Back</a></div>
-<?php if ($flash): ?><div class="alert alert-<?= e((string) $flash['type']) ?>"><?= e((string) $flash['message']) ?></div><?php endif; ?>
-<form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>"><div class="mb-3"><label class="form-label">Title</label><input type="text" name="title" class="form-control" maxlength="255" required></div><div class="mb-3"><label class="form-label">Category</label><select name="category_id" class="form-select" required><option value="">Select category</option><?php foreach ($categories as $cat): ?><option value="<?= (int) $cat['id'] ?>"><?= e((string) $cat['name']) ?></option><?php endforeach; ?></select></div><div class="mb-3"><label class="form-label">Content</label><textarea name="content" class="form-control" rows="8" required></textarea></div><div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="is_anonymous" value="1" id="is_anonymous"><label class="form-check-label" for="is_anonymous">Post Anonymously</label></div><button type="submit" class="btn btn-primary">Submit for Review</button></form>
-</div></div></div></div></div></body></html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Submit News | Gadget 50</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head>
+<body class="bg-light"><main class="container py-5"><div class="row justify-content-center"><div class="col-lg-8"><div class="card border-0 shadow-sm"><div class="card-body p-4"><div class="d-flex justify-content-between mb-3"><h2>Submit News</h2><a href="index.php" class="btn btn-outline-secondary btn-sm">Back</a></div><?php if ($flash): ?><div class="alert alert-<?= e((string) $flash['type']) ?>"><?= e((string) $flash['message']) ?></div><?php endif; ?><form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>"><div class="mb-3"><label class="form-label">Title</label><input name="title" maxlength="255" class="form-control" required></div><div class="mb-3"><label class="form-label">Category</label><select name="category_id" class="form-select" required><option value="">Select category</option><?php foreach ($categories as $cat): ?><option value="<?= (int) $cat['id'] ?>"><?= e((string) $cat['name']) ?></option><?php endforeach; ?></select></div><div class="mb-3"><label class="form-label">Content</label><textarea name="content" class="form-control" rows="8" required></textarea></div><div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="is_anonymous" id="is_anonymous" value="1"><label class="form-check-label" for="is_anonymous">Post Anonymously</label></div><button class="btn btn-primary">Submit for Review</button></form></div></div></div></div></main></body></html>

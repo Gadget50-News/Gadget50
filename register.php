@@ -14,8 +14,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim((string) ($_POST['email'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
 
-    if ($username === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($password) < 8) {
-        setFlash('danger', 'Use a username, valid email, and password of at least 8 characters.');
+    if (!preg_match('/^[A-Za-z0-9_.-]{3,80}$/', $username) || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($password) < 8) {
+        setFlash('danger', 'Use a valid username, email, and password of at least 8 characters.');
         redirect('register.php');
     }
 
@@ -29,7 +29,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $stmt = $pdo->prepare('INSERT INTO users (username, email, password_hash, role, status, created_at) VALUES (:username, :email, :password_hash, :role, :status, NOW())');
     $stmt->execute([':username' => $username, ':email' => $email, ':password_hash' => password_hash($password, PASSWORD_DEFAULT), ':role' => 'member', ':status' => 'active']);
-
     session_regenerate_id(true);
     $_SESSION['user_id'] = (int) $pdo->lastInsertId();
     $_SESSION['user_role'] = 'member';
@@ -40,10 +39,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $flash = getFlash();
 ?>
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Register | Gadget 50</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head>
-<body class="bg-light"><div class="container py-5"><div class="row justify-content-center"><div class="col-md-6"><div class="card shadow-sm border-0"><div class="card-body p-4">
-<h2 class="mb-3">Create an Account</h2>
-<?php if ($flash): ?><div class="alert alert-<?= e((string) $flash['type']) ?>"><?= e((string) $flash['message']) ?></div><?php endif; ?>
-<form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>"><div class="mb-3"><label class="form-label">Username</label><input type="text" name="username" class="form-control" maxlength="80" required></div><div class="mb-3"><label class="form-label">Email</label><input type="email" name="email" class="form-control" maxlength="190" required></div><div class="mb-3"><label class="form-label">Password</label><input type="password" name="password" class="form-control" minlength="8" required></div><button type="submit" class="btn btn-primary w-100">Register</button></form>
-<div class="mt-3 text-center small"><a href="login.php">Already have an account?</a><span class="mx-2">|</span><a href="index.php">Back to home</a></div>
-</div></div></div></div></div></body></html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Register | Gadget 50</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head>
+<body class="bg-light"><main class="container py-5"><div class="row justify-content-center"><div class="col-md-6"><div class="card border-0 shadow-sm"><div class="card-body p-4"><h2 class="mb-3">Create an Account</h2><?php if ($flash): ?><div class="alert alert-<?= e((string) $flash['type']) ?>"><?= e((string) $flash['message']) ?></div><?php endif; ?><form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>"><div class="mb-3"><label class="form-label">Username</label><input type="text" name="username" class="form-control" maxlength="80" required></div><div class="mb-3"><label class="form-label">Email</label><input type="email" name="email" class="form-control" maxlength="190" required></div><div class="mb-3"><label class="form-label">Password</label><input type="password" name="password" class="form-control" minlength="8" required></div><button class="btn btn-primary w-100">Register</button></form><div class="mt-3 text-center small"><a href="login.php">Already have an account?</a> <span class="mx-2">|</span> <a href="index.php">Back to home</a></div></div></div></div></div></main></body></html>
