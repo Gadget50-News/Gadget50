@@ -1,8 +1,15 @@
 Options -Indexes
 
-<FilesMatch "^(config\.php|install\.lock|\.env|\.gitignore)$">
+<FilesMatch "^(config\.php|install\.lock|\.env|\.gitignore|database\.sql)$">
     Require all denied
 </FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteCond %{DOCUMENT_ROOT}/install.lock -f
+    RewriteRule ^install\.php$ - [F,L]
+</IfModule>
 
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options "nosniff"
