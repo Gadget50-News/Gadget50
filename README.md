@@ -23,10 +23,22 @@ Native PHP + MySQL public news platform for shared hosting and cPanel.
 
 ## Deployment notes
 
-- PHP 8.0+ and PDO MySQL are recommended.
+- PHP 8.0+ and PDO MySQL are required.
 - Ensure the installer can temporarily write `config.php` and `install.lock`.
 - Keep `config.php` outside public downloads when possible, or configure the server to serve PHP files only.
 - Use HTTPS in production and keep regular database backups.
 - Set restrictive permissions after installation; the web server only needs write access during setup.
 - Do not commit real database credentials or a generated `config.php` to source control.
 - If the server is Nginx or IIS, configure equivalent deny rules for `config.php`, `install.lock`, and `database/` because `.htaccess` is Apache-specific.
+
+## Go-live checklist
+
+- [ ] Create the production MySQL database and least-privilege database user.
+- [ ] Upload the code over HTTPS/SFTP and run `install.php` once.
+- [ ] Confirm the generated `config.php` and `install.lock` are protected.
+- [ ] Remove or deny access to `install.php` after installation.
+- [ ] Enable HTTPS and verify secure session cookies.
+- [ ] Log in as Super Admin and change the default branding/settings.
+- [ ] Create at least one category and publish a test news item.
+- [ ] Test registration, login, anonymous submission, moderation, logout, and category filtering.
+- [ ] Configure daily database backups and review hosting error logs.
