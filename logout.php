@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     session_destroy();
-    header('Location: index.php');
+    header('Location: /index.php');
     exit;
 }
 
@@ -40,7 +40,7 @@ $siteName = getSetting('site_name', APP_NAME);
                             <input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>">
                             <button type="submit" class="btn btn-danger">Sign out</button>
                         </form>
-                        <a href="index.php" class="btn btn-outline-secondary">Cancel</a>
+                        <a href="/index.php" class="btn btn-outline-secondary">Cancel</a>
                     </div>
                 </div>
             </div>

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/includes/bootstrap.php';
+require_once __DIR__ . '/includes/email.php';
 
 if (isLoggedIn()) {
     redirect('index.php');
@@ -10,12 +11,13 @@ if (isLoggedIn()) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
+
     $username = trim((string) ($_POST['username'] ?? ''));
-    $email = trim((string) ($_POST['email'] ?? ''));
+    $email = strtolower(trim((string) ($_POST['email'] ?? '')));
     $password = (string) ($_POST['password'] ?? '');
 
-    if (!preg_match('/^[A-Za-z0-9_.-]{3,80}$/', $username) || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($password) < 8) {
-        setFlash('danger', 'Use a valid username, email, and password of at least 8 characters.');
+    if (!preg_match('/^[A-Za-z0-9_.-]{3,80}$/', $username) || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($password) < 12) {
+        setFlash('danger', 'Use a valid username, email, and password of at least 12 characters.');
         redirect('register.php');
     }
 
@@ -27,17 +29,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('register.php');
     }
 
-    $stmt = $pdo->prepare('INSERT INTO users (username, email, password_hash, role, status, created_at) VALUES (:username, :email, :password_hash, :role, :status, NOW())');
-    $stmt->execute([':username' => $username, ':email' => $email, ':password_hash' => password_hash($password, PASSWORD_DEFAULT), ':role' => 'member', ':status' => 'active']);
-    session_regenerate_id(true);
-    $_SESSION['user_id'] = (int) $pdo->lastInsertId();
-    $_SESSION['user_role'] = 'member';
-    setFlash('success', 'Registration successful.');
-    redirect('index.php');
+    $token = generateSecureToken();
+    try {
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare('INSERT INTO users (username, email, email_verified, email_verification_token, email_verification_expires_at, password_hash, role, status, created_at) VALUES (:username, :email, 0, :token, UTC_TIMESTAMP() + INTERVAL 24 HOUR, :password_hash, :role, :status, UTC_TIMESTAMP())');
+        $stmt->execute([
+            ':username' => $username,
+            ':email' => $email,
+            ':token' => $token,
+            ':password_hash' => password_hash($password, PASSWORD_DEFAULT),
+            ':role' => 'member',
+            ':status' => 'inactive',
+        ]);
+        $user = ['id' => (int) $pdo->lastInsertId(), 'username' => $username, 'email' => $email];
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log('Registration failed: ' . $e->getMessage());
+        setFlash('danger', 'Registration could not be completed. Please try again.');
+        redirect('register.php');
+    }
+
+    $verificationSent = sendUserEmailVerification($user);
+    sendAdminNewUserEmail($user);
+    if (!$verificationSent) {
+        setFlash('danger', 'Your account was created, but the verification email could not be sent. Please contact the administrator.');
+    } else {
+        setFlash('success', 'Registration successful. Please check your email and verify your account before logging in.');
+    }
+    redirect('login.php');
 }
 
 $flash = getFlash();
 ?>
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Register | Gadget 50</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head>
-<body class="bg-light"><main class="container py-5"><div class="row justify-content-center"><div class="col-md-6"><div class="card border-0 shadow-sm"><div class="card-body p-4"><h2 class="mb-3">Create an Account</h2><?php if ($flash): ?><div class="alert alert-<?= e((string) $flash['type']) ?>"><?= e((string) $flash['message']) ?></div><?php endif; ?><form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>"><div class="mb-3"><label class="form-label">Username</label><input type="text" name="username" class="form-control" maxlength="80" required></div><div class="mb-3"><label class="form-label">Email</label><input type="email" name="email" class="form-control" maxlength="190" required></div><div class="mb-3"><label class="form-label">Password</label><input type="password" name="password" class="form-control" minlength="8" required></div><button class="btn btn-primary w-100">Register</button></form><div class="mt-3 text-center small"><a href="login.php">Already have an account?</a> <span class="mx-2">|</span> <a href="index.php">Back to home</a></div></div></div></div></div></main></body></html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Register | Gadget 50</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <main class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <h2 class="mb-3">Create an account</h2>
+                        <?php if ($flash): ?><div class="alert alert-<?= e((string) $flash['type']) ?>"><?= e((string) $flash['message']) ?></div><?php endif; ?>
+                        <form method="post" autocomplete="off">
+                            <input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>">
+                            <div class="mb-3"><label class="form-label">Username</label><input class="form-control" type="text" name="username" required pattern="[A-Za-z0-9_.-]{3,80}"></div>
+                            <div class="mb-3"><label class="form-label">Email</label><input class="form-control" type="email" name="email" required></div>
+                            <div class="mb-3"><label class="form-label">Password</label><input class="form-control" type="password" name="password" minlength="12" required></div>
+                            <button class="btn btn-primary w-100" type="submit">Register</button>
+                        </form>
+                        <div class="mt-3 text-center"><a href="login.php">Already have an account? Log in</a></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

@@ -26,8 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $position = (string) ($_POST['position'] ?? 'header');
         $sortOrder = (int) ($_POST['sort_order'] ?? 0);
 
-        if ($title === '' || strlen($title) > 120 || $url === '' || strlen($url) > 255 || !validMenuPosition($position)) {
-            setFlash('danger', 'Enter a valid title, URL, position, and order.');
+        if ($title === '' || strlen($title) > 120 || $url === '' || strlen($url) > 255 || !validMenuPosition($position) || !isSafeMenuUrl($url)) {
+            setFlash('danger', 'Enter a valid title, safe URL, position, and order.');
             redirect('menus.php');
         }
 
@@ -67,9 +67,25 @@ $flash = getFlash();
             <div class="col-md-2"><label class="form-label">Order</label><input type="number" class="form-control" name="sort_order" value="0"></div>
             <div class="col-12"><button class="btn btn-primary">Add Menu</button></div>
         </form></div></div>
-        <div class="card border-0 shadow-sm"><div class="card-body"><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Title</th><th>URL</th><th>Position</th><th>Action</th></tr></thead><tbody>
-        <?php foreach ($menus as $menu): ?><tr><td><?= e((string) $menu['title']) ?></td><td><?= e((string) $menu['url']) ?></td><td><?= e((string) $menu['position']) ?></td><td><form method="post" onsubmit="return confirm('Delete this menu item?');"><input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int) $menu['id'] ?>"><button class="btn btn-sm btn-danger">Delete</button></form></td></tr><?php endforeach; ?>
-        </tbody></table></div></div></div>
+        <div class="card border-0 shadow-sm"><div class="card-body"><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Title</th><th>URL</th><th>Position</th><th>Action</th></tr></thead>
+        <tbody>
+        <?php foreach ($menus as $menu): ?>
+            <tr>
+                <td><?= e((string) $menu['title']) ?></td>
+                <td><?= e((string) $menu['url']) ?></td>
+                <td><?= e((string) $menu['position']) ?></td>
+                <td>
+                    <form method="post" class="d-inline">
+                        <input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="id" value="<?= (int) $menu['id'] ?>">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this menu item?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+        </table></div></div></div>
     </main>
 </body>
 </html>

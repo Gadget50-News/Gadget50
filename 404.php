@@ -3,22 +3,20 @@
 declare(strict_types=1);
 require_once __DIR__ . '/includes/bootstrap.php';
 
-$siteName = getSetting('site_name', APP_NAME);
 $pdo = Database::getInstance();
-
+$siteName = getSetting('site_name', APP_NAME);
 $slug = trim((string) ($_GET['slug'] ?? ''));
 $id = (int) ($_GET['id'] ?? 0);
 
 if ($slug !== '') {
     $stmt = $pdo->prepare('SELECT n.*, c.name AS category_name, u.username AS author_username FROM news n LEFT JOIN categories c ON c.id = n.category_id LEFT JOIN users u ON u.id = n.author_id WHERE n.slug = :slug AND n.status = :status LIMIT 1');
     $stmt->execute([':slug' => $slug, ':status' => 'published']);
-    $item = $stmt->fetch();
 } else {
     $stmt = $pdo->prepare('SELECT n.*, c.name AS category_name, u.username AS author_username FROM news n LEFT JOIN categories c ON c.id = n.category_id LEFT JOIN users u ON u.id = n.author_id WHERE n.id = :id AND n.status = :status LIMIT 1');
     $stmt->execute([':id' => $id, ':status' => 'published']);
-    $item = $stmt->fetch();
 }
 
+$item = $stmt->fetch();
 if (!$item) {
     http_response_code(404);
     require __DIR__ . '/404.php';

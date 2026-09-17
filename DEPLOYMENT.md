@@ -1,27 +1,15 @@
-# Gadget 50 deployment checklist
+# Final deployment policy
 
-## Before upload
+The source changes are complete for this implementation scope, but live infrastructure testing is not possible from GitHub.
 
-- Use PHP 8.0+ with PDO MySQL enabled.
-- Create an empty MySQL database and a least-privilege database user in cPanel.
-- Upload the repository contents over SFTP/HTTPS.
-- Do not upload a real `config.php` or `install.lock` from another installation.
+Required before production:
 
-## Install
+1. Back up database and files.
+2. Run both SQL migrations on staging, then production.
+3. Configure Zoho with an App Password and a verified sender address.
+4. Use Admin > Site Settings > Test SMTP.
+5. Run PHP syntax checks: `find . -name '*.php' -print0 | xargs -0 -n1 php -l`.
+6. Test registration, email verification, login, 2FA, lockout, password reset, blocked reset, logout, admin authorization, clean URLs and 404s.
+7. Confirm HTTPS, secure cookies, error logging, file-upload protection, backups, WAF/CDN and monitoring.
 
-1. Visit `/install.php` once.
-2. Enter the cPanel database host, database name, database user, and password.
-3. Create the Super Admin account.
-4. After the success redirect, verify `/login.php` and `/admin/`.
-5. Confirm that visiting `/install.php` redirects or is denied.
-
-## After install
-
-- Enable HTTPS and verify the browser shows a secure connection.
-- Change branding from **Admin → Site Settings**.
-- Create a category and publish a test story.
-- Test registration, anonymous submission, moderation, category filtering, detail pages, and logout.
-- Configure cPanel backups and review error logs.
-- Keep `config.php` and `install.lock` protected; never commit generated credentials.
-
-Apache hardening is included in `.htaccess`. Nginx/IIS hosts need equivalent deny rules for `config.php`, `install.lock`, `install.php`, and `database/`.
+The repository cannot honestly report a live test or a security percentage without the hosting environment and database. Report any staging error with its exact message and URL for the next fix.

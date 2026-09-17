@@ -1,13 +1,30 @@
 Options -Indexes
 
-<FilesMatch "^(config\.php|install\.lock|\.env|\.gitignore|database\.sql)$">
+<FilesMatch "^(config\.php|install\.lock|install\.php|\.env|\.gitignore|database\.sql)$">
     Require all denied
 </FilesMatch>
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteCond %{DOCUMENT_ROOT}/install.lock -f
-    RewriteRule ^install\.php$ - [F,L]
+
+    RewriteRule ^news/([^/]+)/?$ /news.php?slug=$1 [QSA,L]
+    RewriteRule ^category/([^/]+)/?$ /index.php?category=$1 [QSA,L]
+    RewriteRule ^tag/([^/]+)/?$ /index.php?tag=$1 [QSA,L]
+    RewriteRule ^author/([^/]+)/?$ /index.php?author=$1 [QSA,L]
+    RewriteRule ^user/([^/]+)/?$ /index.php?user=$1 [QSA,L]
+    RewriteRule ^admin/?$ /admin/index.php [L]
+    RewriteRule ^dashboard/?$ /dashboard.php [L]
+    RewriteRule ^login/?$ /login.php [L]
+    RewriteRule ^register/?$ /register.php [L]
+    RewriteRule ^logout/?$ /logout.php [L]
+    RewriteRule ^submit/?$ /submit.php [L]
+    RewriteRule ^404/?$ /404.php [L]
+
+    RewriteCond %{REQUEST_URI} !^/assets/ [NC]
+    RewriteCond %{REQUEST_URI} !^/uploads/ [NC]
+    RewriteCond %{REQUEST_URI} !^/admin/ [NC]
+    RewriteCond %{REQUEST_URI} !^/install(?:\.php)?$ [NC]
+    RewriteRule ^.+$ /404.php [L]
 </IfModule>
 
 <IfModule mod_headers.c>
@@ -15,4 +32,5 @@ Options -Indexes
     Header always set X-Frame-Options "SAMEORIGIN"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Header always set Content-Security-Policy "default-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com 'unsafe-inline' data: blob:"
 </IfModule>
