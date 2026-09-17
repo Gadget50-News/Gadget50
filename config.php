@@ -1,3 +1,8 @@
 <?php
 
-// This file is intentionally left blank until the installer writes the actual database configuration.
+declare(strict_types=1);
+
+/*
+ * This file will be replaced automatically by the installer after the database connection is confirmed.
+ * The initial placeholder avoids runtime errors before installation completes.
+ */

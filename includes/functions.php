@@ -40,9 +40,7 @@ function currentUser(): ?array
         $pdo = Database::getInstance();
         $stmt = $pdo->prepare('SELECT * FROM users WHERE id = :id LIMIT 1');
         $stmt->execute([':id' => $_SESSION['user_id']]);
-        $user = $stmt->fetch();
-
-        return $user ?: null;
+        return $stmt->fetch() ?: null;
     } catch (Throwable $e) {
         return null;
     }

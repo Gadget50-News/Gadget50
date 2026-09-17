@@ -1,9 +1,12 @@
 <?php
+
+declare(strict_types=1);
+
 session_start();
 
 require_once __DIR__ . '/includes/functions.php';
 
-if (file_exists(__DIR__ . '/config.php') && file_exists(__DIR__ . '/install.lock')) {
+if (defined('DB_NAME') && file_exists(__DIR__ . '/install.lock')) {
     header('Location: index.php');
     exit;
 }
@@ -19,8 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $adminEmail = trim((string) ($_POST['admin_email'] ?? ''));
     $adminPassword = (string) ($_POST['admin_password'] ?? '');
 
-    $requiredFields = [
-        'Database Host' => $dbHost,
+    $required = [
+        'MySQL Host' => $dbHost,
         'Database Name' => $dbName,
         'Database User' => $dbUser,
         'Super Admin Username' => $adminUsername,
@@ -28,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'Super Admin Password' => $adminPassword,
     ];
 
-    foreach ($requiredFields as $label => $value) {
+    foreach ($required as $label => $value) {
         if ($value === '') {
             $status = $label . ' is required.';
             break;
@@ -47,16 +50,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $schema = file_get_contents(__DIR__ . '/database/schema.sql');
             if ($schema === false) {
-                throw new RuntimeException('Schema file could not be loaded.');
+                throw new RuntimeException('The schema file could not be read.');
             }
 
             $pdo->exec($schema);
 
             $passwordHash = password_hash($adminPassword, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare(
+            $userStmt = $pdo->prepare(
                 'INSERT INTO users (username, email, password_hash, role, status, created_at) VALUES (:username, :email, :password_hash, :role, :status, NOW())'
             );
-            $stmt->execute([
+            $userStmt->execute([
                 ':username' => $adminUsername,
                 ':email' => $adminEmail,
                 ':password_hash' => $passwordHash,
@@ -86,7 +89,7 @@ PHP;
             );
 
             if (file_put_contents(__DIR__ . '/config.php', $configContent) === false) {
-                throw new RuntimeException('The configuration file could not be written. Please check file permissions.');
+                throw new RuntimeException('config.php could not be written. Please confirm write permissions.');
             }
 
             file_put_contents(__DIR__ . '/install.lock', date('c'));
@@ -107,7 +110,7 @@ PHP;
     <title>Gadget 50 Installer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: linear-gradient(135deg,#f8fafc 0%,#e2e8f0 100%); }
+        body { background: linear-gradient(135deg, #eef2ff, #f8fafc); }
         .card { border: 0; border-radius: 18px; }
         .card-header { border-radius: 18px 18px 0 0 !important; }
         .form-label { font-weight: 600; }
@@ -131,19 +134,19 @@ PHP;
                                 <div class="col-md-6">
                                     <h4 class="mb-3">Database Configuration</h4>
                                     <div class="mb-3">
-                                        <label class="form-label" for="db_host">MySQL Host</label>
+                                        <label for="db_host" class="form-label">MySQL Host</label>
                                         <input type="text" class="form-control" id="db_host" name="db_host" value="localhost" required>
                                     </div>
                                     <div class="mb-3">
-                                        <label class="form-label" for="db_name">Database Name</label>
+                                        <label for="db_name" class="form-label">Database Name</label>
                                         <input type="text" class="form-control" id="db_name" name="db_name" placeholder="gadget50_db" required>
                                     </div>
                                     <div class="mb-3">
-                                        <label class="form-label" for="db_user">Database User</label>
+                                        <label for="db_user" class="form-label">Database User</label>
                                         <input type="text" class="form-control" id="db_user" name="db_user" placeholder="db_user" required>
                                     </div>
                                     <div class="mb-3">
-                                        <label class="form-label" for="db_password">Database Password</label>
+                                        <label for="db_password" class="form-label">Database Password</label>
                                         <input type="password" class="form-control" id="db_password" name="db_password" placeholder="••••••••" required>
                                     </div>
                                 </div>
@@ -151,22 +154,22 @@ PHP;
                                 <div class="col-md-6">
                                     <h4 class="mb-3">Super Admin Account</h4>
                                     <div class="mb-3">
-                                        <label class="form-label" for="admin_username">Username</label>
+                                        <label for="admin_username" class="form-label">Username</label>
                                         <input type="text" class="form-control" id="admin_username" name="admin_username" placeholder="admin" required>
                                     </div>
                                     <div class="mb-3">
-                                        <label class="form-label" for="admin_email">Email</label>
+                                        <label for="admin_email" class="form-label">Email</label>
                                         <input type="email" class="form-control" id="admin_email" name="admin_email" placeholder="admin@example.com" required>
                                     </div>
                                     <div class="mb-3">
-                                        <label class="form-label" for="admin_password">Password</label>
+                                        <label for="admin_password" class="form-label">Password</label>
                                         <input type="password" class="form-control" id="admin_password" name="admin_password" placeholder="Strong password" required>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="mt-4 d-flex justify-content-between align-items-center">
-                                <small class="text-muted">This setup will create tables, add defaults, and lock the installer.</small>
+                            <div class="mt-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                                <small class="text-muted">This wizard creates the database tables, inserts default settings, and locks the installer.</small>
                                 <button type="submit" class="btn btn-primary btn-lg">Install Gadget 50</button>
                             </div>
                         </form>
