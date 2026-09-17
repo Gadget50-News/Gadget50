@@ -1,16 +1,14 @@
 Options -Indexes
 
-# Protect credentials, lock files, environment files, and source-control metadata.
-# install.php is intentionally accessible only until installation creates install.lock.
 <FilesMatch "^(config\.php|install\.lock|\.env|\.gitignore|.*\.sql)$">
     Require all denied
 </FilesMatch>
 
+ErrorDocument 404 /404.php
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
-    # Once installed, never expose the installer again. Before install.lock exists,
-    # install.php remains reachable so a fresh upload can be configured.
     RewriteCond %{REQUEST_FILENAME} -f
     RewriteCond %{REQUEST_URI} ^/install\.php$ [NC]
     RewriteCond %{DOCUMENT_ROOT}/install.lock -f
@@ -29,12 +27,10 @@ Options -Indexes
     RewriteRule ^submit/?$ /submit.php [L]
     RewriteRule ^404/?$ /404.php [L]
 
-    # Do not rewrite real application files or static assets.
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
-    # Unknown public paths are handled by the application 404 page.
     RewriteRule ^ /404.php [L]
 </IfModule>
 
