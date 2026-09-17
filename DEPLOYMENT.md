@@ -1,12 +1,15 @@
-# Final deployment checklist
+# Final deployment policy
 
-1. Back up the database and files.
-2. Run `database/migrations/001_login_rate_limits.sql` and `database/migrations/002_email_verification_and_2fa.sql` on staging first.
-3. Configure Zoho SMTP with an App Password, not the mailbox password.
-4. Set the real HTTPS Site URL and verified From Email in Admin > Site Settings.
-5. Test registration, verification, login, 2FA, reset, blocked reset, logout, and admin authorization.
-6. Run `php -l` against every PHP file and inspect PHP/server error logs.
-7. Confirm SMTP credentials are not committed to Git and are not exposed to users.
-8. Enable HTTPS, secure cookies, backups, monitoring, and WAF/CDN protections.
+The source changes are complete for this implementation scope, but live infrastructure testing is not possible from GitHub.
 
-This repository cannot perform a live SMTP, browser, or production-database test from GitHub. Do not claim completion until those checks pass on staging/live infrastructure.
+Required before production:
+
+1. Back up database and files.
+2. Run both SQL migrations on staging, then production.
+3. Configure Zoho with an App Password and a verified sender address.
+4. Use Admin > Site Settings > Test SMTP.
+5. Run PHP syntax checks: `find . -name '*.php' -print0 | xargs -0 -n1 php -l`.
+6. Test registration, email verification, login, 2FA, lockout, password reset, blocked reset, logout, admin authorization, clean URLs and 404s.
+7. Confirm HTTPS, secure cookies, error logging, file-upload protection, backups, WAF/CDN and monitoring.
+
+The repository cannot honestly report a live test or a security percentage without the hosting environment and database. Report any staging error with its exact message and URL for the next fix.

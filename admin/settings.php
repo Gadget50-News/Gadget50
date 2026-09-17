@@ -11,9 +11,22 @@ $allowed = ['site_name','site_logo','site_favicon','header_text','footer_copyrig
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
+    if ((string) ($_POST['action'] ?? '') === 'test_email') {
+        $recipient = trim((string) ($_POST['test_email'] ?? ''));
+        if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+            setFlash('danger', 'Enter a valid test email address.');
+        } elseif (sendEmail($recipient, APP_NAME . ' SMTP test', '<p>This is a test email from ' . e(APP_NAME) . '.</p>')) {
+            setFlash('success', 'Test email sent successfully.');
+        } else {
+            setFlash('danger', 'The test email could not be sent. Check SMTP settings and server logs.');
+        }
+        redirect('settings.php');
+    }
+
     foreach ($_POST['setting'] ?? [] as $key => $value) {
         if (!in_array((string) $key, $allowed, true)) continue;
         $value = trim((string) $value);
+        if ($key === 'smtp_password' && $value === '') continue;
         if ($key === 'smtp_port' && (!ctype_digit($value) || (int) $value < 1 || (int) $value > 65535)) continue;
         if ($key === 'smtp_encryption' && !in_array($value, ['tls','ssl','none'], true)) continue;
         if (in_array($key, ['smtp_from_email','admin_alert_email'], true) && $value !== '' && !filter_var($value, FILTER_VALIDATE_EMAIL)) continue;
@@ -40,9 +53,11 @@ $flash = getFlash();
 <div class="col-md-6"><label class="form-label">Admin Alert Email</label><input class="form-control" type="email" name="setting[admin_alert_email]" value="<?= e($map['admin_alert_email'] ?? '') ?>"></div>
 <div class="col-md-6"><label class="form-label">SMTP Host</label><input class="form-control" name="setting[smtp_host]" value="<?= e($map['smtp_host'] ?? 'smtp.zoho.com') ?>"></div>
 <div class="col-md-3"><label class="form-label">SMTP Port</label><input class="form-control" type="number" name="setting[smtp_port]" value="<?= e($map['smtp_port'] ?? '587') ?>"></div>
-<div class="col-md-3"><label class="form-label">Encryption</label><select class="form-select" name="setting[smtp_encryption]"><option value="tls">TLS</option><option value="ssl">SSL</option><option value="none">None</option></select></div>
+<div class="col-md-3"><label class="form-label">Encryption</label><select class="form-select" name="setting[smtp_encryption]"><option value="tls" <?= (($map['smtp_encryption'] ?? 'tls') === 'tls') ? 'selected' : '' ?>>TLS</option><option value="ssl" <?= (($map['smtp_encryption'] ?? '') === 'ssl') ? 'selected' : '' ?>>SSL</option><option value="none" <?= (($map['smtp_encryption'] ?? '') === 'none') ? 'selected' : '' ?>>None</option></select></div>
 <div class="col-md-6"><label class="form-label">SMTP Username</label><input class="form-control" name="setting[smtp_username]" value="<?= e($map['smtp_username'] ?? '') ?>"></div>
-<div class="col-md-6"><label class="form-label">SMTP App Password</label><input class="form-control" type="password" name="setting[smtp_password]" value="<?= e($map['smtp_password'] ?? '') ?>" autocomplete="new-password"></div>
+<div class="col-md-6"><label class="form-label">SMTP App Password</label><input class="form-control" type="password" name="setting[smtp_password]" value="" autocomplete="new-password"><div class="form-text">Leave blank to keep the saved password. Use a Zoho App Password.</div></div>
 <div class="col-md-6"><label class="form-label">From Name</label><input class="form-control" name="setting[smtp_from_name]" value="<?= e($map['smtp_from_name'] ?? APP_NAME) ?>"></div>
 <div class="col-md-6"><label class="form-label">From Email</label><input class="form-control" type="email" name="setting[smtp_from_email]" value="<?= e($map['smtp_from_email'] ?? '') ?>"></div>
-<div class="col-12"><button class="btn btn-primary" type="submit">Save Settings</button></div></form></main></body></html>
+<div class="col-12"><button class="btn btn-primary" type="submit">Save Settings</button></div></form>
+<hr class="my-4"><h4>Test SMTP</h4><form method="post" class="row g-3"><input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>"><input type="hidden" name="action" value="test_email"><div class="col-md-8"><label class="form-label">Test recipient</label><input class="form-control" type="email" name="test_email" required></div><div class="col-md-4 d-flex align-items-end"><button class="btn btn-outline-primary w-100" type="submit">Send Test Email</button></div></form>
+</main></body></html>
