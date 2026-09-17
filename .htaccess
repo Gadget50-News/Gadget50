@@ -1,11 +1,18 @@
 Options -Indexes
 
-<FilesMatch "^(config\.php|install\.lock|install\.php|\.env|\.gitignore|database\.sql)$">
+<FilesMatch "^(config\.php|install\.lock|\.env|\.gitignore|.*\.sql)$">
     Require all denied
 </FilesMatch>
 
+ErrorDocument 404 /404.php
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
+
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteCond %{REQUEST_URI} ^/install\.php$ [NC]
+    RewriteCond %{DOCUMENT_ROOT}/install.lock -f
+    RewriteRule ^install\.php$ / [R=302,L]
 
     RewriteRule ^news/([^/]+)/?$ /news.php?slug=$1 [QSA,L]
     RewriteRule ^category/([^/]+)/?$ /index.php?category=$1 [QSA,L]
@@ -20,11 +27,11 @@ Options -Indexes
     RewriteRule ^submit/?$ /submit.php [L]
     RewriteRule ^404/?$ /404.php [L]
 
-    RewriteCond %{REQUEST_URI} !^/assets/ [NC]
-    RewriteCond %{REQUEST_URI} !^/uploads/ [NC]
-    RewriteCond %{REQUEST_URI} !^/admin/ [NC]
-    RewriteCond %{REQUEST_URI} !^/install(?:\.php)?$ [NC]
-    RewriteRule ^.+$ /404.php [L]
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    RewriteRule ^ /404.php [L]
 </IfModule>
 
 <IfModule mod_headers.c>
