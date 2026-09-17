@@ -1,5 +1,5 @@
 -- Persistent brute-force protection for login attempts.
--- The fifth failed attempt blocks the matching IP and device for 48 hours.
+-- The fifth failed attempt blocks the matching IP, device, and identity for 48 hours.
 CREATE TABLE IF NOT EXISTS login_rate_limits (
     rate_key VARCHAR(150) NOT NULL PRIMARY KEY,
     failed_attempts INT UNSIGNED NOT NULL DEFAULT 0,

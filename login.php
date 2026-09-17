@@ -9,17 +9,17 @@ if (isLoggedIn()) {
 }
 
 $pdo = Database::getInstance();
-$genericLoginError = 'Invalid login credentials.';
-$blockedMessage = 'Too many failed login attempts. This device and IP address are blocked for 48 hours.';
 $maxAttempts = 5;
-$blockHours = 48;
+$blockSeconds = 48 * 60 * 60;
+$genericMessage = 'Invalid login credentials.';
+$blockedMessage = 'Too many failed login attempts. This IP address and device are blocked for 48 hours.';
 
 $secureCookie = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
 $deviceToken = (string) ($_COOKIE['gadget50_device'] ?? '');
 if (!preg_match('/^[a-f0-9]{64}$/', $deviceToken)) {
     $deviceToken = bin2hex(random_bytes(32));
     setcookie('gadget50_device', $deviceToken, [
-        'expires' => time() + (86400 * 365),
+        'expires' => time() + (365 * 86400),
         'path' => '/',
         'secure' => $secureCookie,
         'httponly' => true,
@@ -27,71 +27,42 @@ if (!preg_match('/^[a-f0-9]{64}$/', $deviceToken)) {
     ]);
 }
 
-function loginRateKey(string $type, string $value): string
-{
-    return $type . ':' . hash('sha256', $value);
-}
-
-function getLoginBlock(PDO $pdo, string $ipKey, string $deviceKey): ?array
-{
-    $stmt = $pdo->prepare('SELECT rate_key, failed_attempts, blocked_until FROM login_rate_limits WHERE rate_key = :ip_key OR rate_key = :device_key');
-    $stmt->execute([':ip_key' => $ipKey, ':device_key' => $deviceKey]);
-    $now = time();
-    $highest = null;
-
-    foreach ($stmt->fetchAll() as $row) {
-        $blockedUntil = $row['blocked_until'] !== null ? strtotime((string) $row['blocked_until']) : false;
-        if ($blockedUntil !== false && $blockedUntil > $now) {
-            return [
-                'blocked' => true,
-                'failed_attempts' => (int) $row['failed_attempts'],
-                'blocked_until' => $blockedUntil,
-            ];
-        }
-
-        if ($highest === null || (int) $row['failed_attempts'] > (int) $highest['failed_attempts']) {
-            $highest = [
-                'blocked' => false,
-                'failed_attempts' => (int) $row['failed_attempts'],
-                'blocked_until' => null,
-            ];
-        }
-    }
-
-    return $highest;
-}
-
-function recordLoginFailure(PDO $pdo, string $ipKey, string $deviceKey, int $maxAttempts, int $blockHours): int
-{
-    $upsert = $pdo->prepare('INSERT INTO login_rate_limits (rate_key, failed_attempts, blocked_until, last_failed_at) VALUES (:rate_key, 1, NULL, NOW()) ON DUPLICATE KEY UPDATE failed_attempts = failed_attempts + 1, blocked_until = CASE WHEN failed_attempts + 1 >= :max_attempts THEN DATE_ADD(NOW(), INTERVAL 48 HOUR) ELSE blocked_until END, last_failed_at = NOW()');
-
-    foreach ([$ipKey, $deviceKey] as $rateKey) {
-        $upsert->execute([
-            ':rate_key' => $rateKey,
-            ':max_attempts' => $maxAttempts,
-        ]);
-    }
-
-    $stmt = $pdo->prepare('SELECT COALESCE(MAX(failed_attempts), 0) FROM login_rate_limits WHERE rate_key = :ip_key OR rate_key = :device_key');
-    $stmt->execute([':ip_key' => $ipKey, ':device_key' => $deviceKey]);
-    return (int) $stmt->fetchColumn();
-}
+$makeKey = static function (string $scope, string $value): string {
+    return $scope . ':' . hash('sha256', $value);
+};
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
 
     $identity = trim((string) ($_POST['identity'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
+    // REMOTE_ADDR is intentionally used; forwarded headers are client-controlled unless
+    // a trusted reverse proxy has been explicitly configured at the server level.
     $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
-    $ipKey = loginRateKey('ip', $ip);
-    $deviceKey = loginRateKey('device', $deviceToken);
+
+    $keys = [
+        $makeKey('ip', $ip),
+        $makeKey('device', $deviceToken),
+        $makeKey('identity', strtolower($identity)),
+    ];
 
     try {
-        // A block is checked before credential verification: correct credentials cannot bypass it.
-        $existingBlock = getLoginBlock($pdo, $ipKey, $deviceKey);
-        if ($existingBlock !== null && $existingBlock['blocked'] === true) {
-            setFlash('danger', $blockedMessage);
-            redirect('login.php');
+        $placeholders = implode(',', array_fill(0, count($keys), '?'));
+        $pdo->beginTransaction();
+
+        // Lockout is checked before password verification: a correct password cannot
+        // bypass an active IP, device, or identity lock.
+        $lockStmt = $pdo->prepare("SELECT rate_key, failed_attempts, blocked_until FROM login_rate_limits WHERE rate_key IN ($placeholders) FOR UPDATE");
+        $lockStmt->execute($keys);
+        $limits = $lockStmt->fetchAll();
+        $highestAttempts = 0;
+        foreach ($limits as $limit) {
+            $highestAttempts = max($highestAttempts, (int) $limit['failed_attempts']);
+            if ($limit['blocked_until'] !== null && strtotime((string) $limit['blocked_until']) > time()) {
+                $pdo->rollBack();
+                setFlash('danger', $blockedMessage);
+                redirect('login.php');
+            }
         }
 
         $stmt = $pdo->prepare('SELECT * FROM users WHERE (username = :identity OR email = :email) AND status = :status LIMIT 1');
@@ -101,37 +72,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':status' => 'active',
         ]);
         $user = $stmt->fetch();
+        $validCredentials = $identity !== '' && $password !== '' && $user && password_verify($password, (string) $user['password_hash']);
 
-        if ($identity === '' || $password === '' || !$user || !password_verify($password, (string) $user['password_hash'])) {
-            $pdo->beginTransaction();
-            $attempts = recordLoginFailure($pdo, $ipKey, $deviceKey, $maxAttempts, $blockHours);
+        if (!$validCredentials) {
+            foreach ($keys as $key) {
+                $upsert = $pdo->prepare('INSERT INTO login_rate_limits (rate_key, failed_attempts, blocked_until, last_failed_at) VALUES (?, 1, NULL, UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE failed_attempts = LEAST(failed_attempts + 1, 4294967295), blocked_until = CASE WHEN failed_attempts + 1 >= ? THEN DATE_ADD(UTC_TIMESTAMP(), INTERVAL 48 HOUR) ELSE blocked_until END, last_failed_at = UTC_TIMESTAMP()');
+                $upsert->execute([$key, $maxAttempts]);
+            }
+
+            $countStmt = $pdo->prepare("SELECT COALESCE(MAX(failed_attempts), 0) FROM login_rate_limits WHERE rate_key IN ($placeholders)");
+            $countStmt->execute($keys);
+            $attempts = (int) $countStmt->fetchColumn();
             $pdo->commit();
+
+            // Progressive delay slows automated attacks without changing the design.
+            usleep(min(5000000, max(250000, $attempts * 500000)));
 
             if ($attempts >= $maxAttempts) {
                 setFlash('danger', $blockedMessage);
-                redirect('login.php');
-            }
-
-            $remaining = $maxAttempts - $attempts;
-            if ($attempts >= 2) {
-                $message = sprintf('ভুল পাসওয়ার্ড। আপনি %d বার ভুল করেছেন; আর সর্বোচ্চ %d বার চেষ্টা করতে পারবেন।', $attempts, $remaining);
-                if ($remaining === 1) {
-                    $message = 'সতর্কতা: এটি আপনার শেষ সুযোগ। আর একবার ভুল পাসওয়ার্ড দিলে এই ডিভাইস ও IP ঠিকানা ৪৮ ঘণ্টার জন্য ব্লক হবে।';
-                }
+            } elseif ($attempts === 4) {
+                setFlash('danger', 'সতর্কতা: এটি আপনার শেষ সুযোগ। আর একবার ভুল পাসওয়ার্ড দিলে এই IP ও ডিভাইস ৪৮ ঘণ্টার জন্য ব্লক হবে।');
+            } elseif ($attempts >= 2) {
+                $remaining = $maxAttempts - $attempts;
+                setFlash('danger', sprintf('ভুল পাসওয়ার্ড। আপনি %d বার ভুল করেছেন; আর সর্বোচ্চ %d বার চেষ্টা করতে পারবেন।', $attempts, $remaining));
             } else {
-                $message = $genericLoginError;
+                setFlash('danger', $genericMessage);
             }
-
-            setFlash('danger', $message);
             redirect('login.php');
         }
 
         session_regenerate_id(true);
         $_SESSION['user_id'] = (int) $user['id'];
         $_SESSION['user_role'] = (string) $user['role'];
-
-        $clear = $pdo->prepare('DELETE FROM login_rate_limits WHERE rate_key = :ip_key OR rate_key = :device_key');
-        $clear->execute([':ip_key' => $ipKey, ':device_key' => $deviceKey]);
+        $clearStmt = $pdo->prepare("DELETE FROM login_rate_limits WHERE rate_key IN ($placeholders)");
+        $clearStmt->execute($keys);
+        $pdo->commit();
 
         setFlash('success', 'Login successful.');
         redirect($user['role'] === 'super_admin' ? 'admin/index.php' : 'index.php');
@@ -140,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->rollBack();
         }
         error_log('Login processing failed: ' . $e->getMessage());
-        setFlash('danger', $genericLoginError);
+        setFlash('danger', $genericMessage);
         redirect('login.php');
     }
 }
