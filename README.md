@@ -1,17 +1,27 @@
 # Gadget 50
 
-A native PHP + MySQL news platform starter designed for shared hosting and cPanel deployment.
+Native PHP + MySQL public news platform for shared hosting and cPanel.
 
 ## Installation
 
-1. Upload the files to your hosting directory.
-2. Open `install.php` in the browser.
-3. Enter MySQL credentials and the Super Admin account details.
-4. The installer creates the database tables and writes `config.php`.
-5. Open `index.php` to browse the public front-end.
+1. Upload the repository to the web root.
+2. Create an empty MySQL database and user.
+3. Open `install.php` and enter the database and Super Admin details.
+4. The installer creates the schema, seeds defaults, writes `config.php`, and creates `install.lock`.
+5. Remove or deny web access to `install.php` after installation as an additional hosting safeguard.
 
-## Notes
+## Included features
 
-- The installer locks itself after a successful setup using `install.lock`.
-- Database operations use PDO prepared statements.
-- Outputs are escaped with `htmlspecialchars()`.
+- Dynamic installation wizard with password hashing.
+- Public news listing, category filters, detail pages, and view counts.
+- Member registration/login and moderated news submission.
+- Anonymous public author display while retaining the submitter for admins.
+- Super Admin dashboard, settings, menus, categories, users, and news moderation/editing.
+- PDO prepared statements, escaped output, sessions, CSRF-protected state-changing forms, and role checks.
+
+## Deployment notes
+
+- PHP 8.0+ and PDO MySQL are recommended.
+- Ensure the installer can temporarily write `config.php` and `install.lock`.
+- Keep `config.php` outside public downloads when possible, or configure the server to serve PHP files only.
+- Use HTTPS in production and keep regular database backups.

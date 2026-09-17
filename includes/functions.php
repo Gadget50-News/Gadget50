@@ -20,13 +20,9 @@ function setFlash(string $type, string $message): void
 
 function getFlash(): ?array
 {
-    if (!isset($_SESSION['flash'])) {
-        return null;
-    }
-
-    $flash = $_SESSION['flash'];
+    $flash = $_SESSION['flash'] ?? null;
     unset($_SESSION['flash']);
-    return $flash;
+    return is_array($flash) ? $flash : null;
 }
 
 function csrfToken(): string
@@ -34,7 +30,6 @@ function csrfToken(): string
     if (empty($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
-
     return (string) $_SESSION['csrf_token'];
 }
 
@@ -57,11 +52,9 @@ function currentUser(): ?array
     if (!isLoggedIn()) {
         return null;
     }
-
     try {
-        $pdo = Database::getInstance();
-        $stmt = $pdo->prepare('SELECT * FROM users WHERE id = :id LIMIT 1');
-        $stmt->execute([':id' => $_SESSION['user_id']]);
+        $stmt = Database::getInstance()->prepare('SELECT * FROM users WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => (int) $_SESSION['user_id']]);
         return $stmt->fetch() ?: null;
     } catch (Throwable $e) {
         return null;
@@ -78,7 +71,7 @@ function requireLogin(string $redirectTo = 'login.php'): void
 function requireRole(string $role, string $redirectTo = 'login.php'): void
 {
     $user = currentUser();
-    if (!$user || (string) $user['role'] !== $role || (string) $user['status'] !== 'active') {
+    if (!$user || $user['role'] !== $role || $user['status'] !== 'active') {
         redirect($redirectTo);
     }
 }
@@ -86,8 +79,7 @@ function requireRole(string $role, string $redirectTo = 'login.php'): void
 function getSetting(string $key, string $default = ''): string
 {
     try {
-        $pdo = Database::getInstance();
-        $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = :key LIMIT 1');
+        $stmt = Database::getInstance()->prepare('SELECT setting_value FROM settings WHERE setting_key = :key LIMIT 1');
         $stmt->execute([':key' => $key]);
         $row = $stmt->fetch();
         return ($row && $row['setting_value'] !== null) ? (string) $row['setting_value'] : $default;
@@ -99,5 +91,10 @@ function getSetting(string $key, string $default = ''): string
 function slugify(string $value): string
 {
     $slug = strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '-', $value), '-'));
-    return $slug !== '' ? $slug : 'news-item';
+    return $slug !== '' ? $slug : 'item-' . bin2hex(random_bytes(4));
+}
+
+function validMenuPosition(string $position): bool
+{
+    return in_array($position, ['header', 'footer', 'sidebar'], true);
 }
