@@ -49,15 +49,11 @@ function isLoggedIn(): bool
 
 function currentUser(): ?array
 {
-    if (!isLoggedIn()) {
-        return null;
-    }
-
+    if (!isLoggedIn()) return null;
     try {
         $stmt = Database::getInstance()->prepare('SELECT * FROM users WHERE id = :id LIMIT 1');
         $stmt->execute([':id' => (int) $_SESSION['user_id']]);
-        $user = $stmt->fetch();
-        return $user ?: null;
+        return $stmt->fetch() ?: null;
     } catch (Throwable $e) {
         return null;
     }
@@ -65,17 +61,13 @@ function currentUser(): ?array
 
 function requireLogin(string $redirectTo = 'login.php'): void
 {
-    if (!isLoggedIn()) {
-        redirect($redirectTo);
-    }
+    if (!isLoggedIn()) redirect($redirectTo);
 }
 
 function requireRole(string $role, string $redirectTo = 'login.php'): void
 {
     $user = currentUser();
-    if (!$user || $user['role'] !== $role || $user['status'] !== 'active') {
-        redirect($redirectTo);
-    }
+    if (!$user || $user['role'] !== $role || $user['status'] !== 'active') redirect($redirectTo);
 }
 
 function getSetting(string $key, string $default = ''): string
@@ -99,4 +91,23 @@ function slugify(string $value): string
 function validMenuPosition(string $position): bool
 {
     return in_array($position, ['header', 'footer', 'sidebar'], true);
+}
+
+function uploadNewsImage(array $file): ?string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return null;
+    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'] ?? '')) {
+        throw new RuntimeException('Image upload failed.');
+    }
+    if (($file['size'] ?? 0) > 5 * 1024 * 1024) throw new RuntimeException('Images must be 5 MB or smaller.');
+
+    $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
+    if (!isset($allowed[$mime])) throw new RuntimeException('Only JPG, PNG, WEBP, and GIF images are allowed.');
+
+    $directory = __DIR__ . '/../uploads/news';
+    if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) throw new RuntimeException('Upload directory is unavailable.');
+    $name = bin2hex(random_bytes(16)) . '.' . $allowed[$mime];
+    if (!move_uploaded_file($file['tmp_name'], $directory . '/' . $name)) throw new RuntimeException('Could not save the image.');
+    return 'uploads/news/' . $name;
 }
