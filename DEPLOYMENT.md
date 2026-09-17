@@ -1,27 +1,12 @@
-# Gadget 50 deployment checklist
+# Final deployment checklist
 
-## Before upload
+1. Back up the database and files.
+2. Run `database/migrations/001_login_rate_limits.sql` and `database/migrations/002_email_verification_and_2fa.sql` on staging first.
+3. Configure Zoho SMTP with an App Password, not the mailbox password.
+4. Set the real HTTPS Site URL and verified From Email in Admin > Site Settings.
+5. Test registration, verification, login, 2FA, reset, blocked reset, logout, and admin authorization.
+6. Run `php -l` against every PHP file and inspect PHP/server error logs.
+7. Confirm SMTP credentials are not committed to Git and are not exposed to users.
+8. Enable HTTPS, secure cookies, backups, monitoring, and WAF/CDN protections.
 
-- Use PHP 8.0+ with PDO MySQL enabled.
-- Create an empty MySQL database and a least-privilege database user in cPanel.
-- Upload the repository contents over SFTP/HTTPS.
-- Do not upload a real `config.php` or `install.lock` from another installation.
-
-## Install
-
-1. Visit `/install.php` once.
-2. Enter the cPanel database host, database name, database user, and password.
-3. Create the Super Admin account.
-4. After the success redirect, verify `/login.php` and `/admin/`.
-5. Confirm that visiting `/install.php` redirects or is denied.
-
-## After install
-
-- Enable HTTPS and verify the browser shows a secure connection.
-- Change branding from **Admin → Site Settings**.
-- Create a category and publish a test story.
-- Test registration, anonymous submission, moderation, category filtering, detail pages, and logout.
-- Configure cPanel backups and review error logs.
-- Keep `config.php` and `install.lock` protected; never commit generated credentials.
-
-Apache hardening is included in `.htaccess`. Nginx/IIS hosts need equivalent deny rules for `config.php`, `install.lock`, `install.php`, and `database/`.
+This repository cannot perform a live SMTP, browser, or production-database test from GitHub. Do not claim completion until those checks pass on staging/live infrastructure.
