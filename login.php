@@ -3,121 +3,76 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/includes/bootstrap.php';
+require_once __DIR__ . '/includes/email.php';
 
 if (isLoggedIn()) {
     redirect('index.php');
 }
-
-$pdo = Database::getInstance();
-$maxAttempts = 5;
-$blockSeconds = 48 * 60 * 60;
-$genericMessage = 'Invalid login credentials.';
-$blockedMessage = 'Too many failed login attempts. This IP address and device are blocked for 48 hours.';
-
-$secureCookie = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
-$deviceToken = (string) ($_COOKIE['gadget50_device'] ?? '');
-if (!preg_match('/^[a-f0-9]{64}$/', $deviceToken)) {
-    $deviceToken = bin2hex(random_bytes(32));
-    setcookie('gadget50_device', $deviceToken, [
-        'expires' => time() + (365 * 86400),
-        'path' => '/',
-        'secure' => $secureCookie,
-        'httponly' => true,
-        'samesite' => 'Lax',
-    ]);
-}
-
-$makeKey = static function (string $scope, string $value): string {
-    return $scope . ':' . hash('sha256', $value);
-};
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
 
     $identity = trim((string) ($_POST['identity'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
-    // REMOTE_ADDR is intentionally used; forwarded headers are client-controlled unless
-    // a trusted reverse proxy has been explicitly configured at the server level.
-    $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+    $twoFactorCode = trim((string) ($_POST['two_factor_code'] ?? ''));
 
-    $keys = [
-        $makeKey('ip', $ip),
-        $makeKey('device', $deviceToken),
-        $makeKey('identity', strtolower($identity)),
-    ];
-
-    try {
-        $placeholders = implode(',', array_fill(0, count($keys), '?'));
-        $pdo->beginTransaction();
-
-        // Lockout is checked before password verification: a correct password cannot
-        // bypass an active IP, device, or identity lock.
-        $lockStmt = $pdo->prepare("SELECT rate_key, failed_attempts, blocked_until FROM login_rate_limits WHERE rate_key IN ($placeholders) FOR UPDATE");
-        $lockStmt->execute($keys);
-        $limits = $lockStmt->fetchAll();
-        $highestAttempts = 0;
-        foreach ($limits as $limit) {
-            $highestAttempts = max($highestAttempts, (int) $limit['failed_attempts']);
-            if ($limit['blocked_until'] !== null && strtotime((string) $limit['blocked_until']) > time()) {
-                $pdo->rollBack();
-                setFlash('danger', $blockedMessage);
-                redirect('login.php');
-            }
+    if (!empty($_SESSION['pending_2fa_user_id']) && !empty($_SESSION['pending_2fa_code'])) {
+        if ($twoFactorCode === '' || !hash_equals((string) $_SESSION['pending_2fa_code'], $twoFactorCode)) {
+            setFlash('danger', 'Invalid 2FA code. Please try again.');
+            redirect('two-factor.php');
         }
 
-        $stmt = $pdo->prepare('SELECT * FROM users WHERE (username = :identity OR email = :email) AND status = :status LIMIT 1');
-        $stmt->execute([
-            ':identity' => $identity,
-            ':email' => $identity,
-            ':status' => 'active',
-        ]);
+        $userId = (int) $_SESSION['pending_2fa_user_id'];
+        $stmt = Database::getInstance()->prepare('SELECT * FROM users WHERE id = :id AND status IN ("active", "inactive") LIMIT 1');
+        $stmt->execute([':id' => $userId]);
         $user = $stmt->fetch();
-        $validCredentials = $identity !== '' && $password !== '' && $user && password_verify($password, (string) $user['password_hash']);
 
-        if (!$validCredentials) {
-            foreach ($keys as $key) {
-                $upsert = $pdo->prepare('INSERT INTO login_rate_limits (rate_key, failed_attempts, blocked_until, last_failed_at) VALUES (?, 1, NULL, UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE failed_attempts = LEAST(failed_attempts + 1, 4294967295), blocked_until = CASE WHEN failed_attempts + 1 >= ? THEN DATE_ADD(UTC_TIMESTAMP(), INTERVAL 48 HOUR) ELSE blocked_until END, last_failed_at = UTC_TIMESTAMP()');
-                $upsert->execute([$key, $maxAttempts]);
-            }
-
-            $countStmt = $pdo->prepare("SELECT COALESCE(MAX(failed_attempts), 0) FROM login_rate_limits WHERE rate_key IN ($placeholders)");
-            $countStmt->execute($keys);
-            $attempts = (int) $countStmt->fetchColumn();
-            $pdo->commit();
-
-            // Progressive delay slows automated attacks without changing the design.
-            usleep(min(5000000, max(250000, $attempts * 500000)));
-
-            if ($attempts >= $maxAttempts) {
-                setFlash('danger', $blockedMessage);
-            } elseif ($attempts === 4) {
-                setFlash('danger', 'সতর্কতা: এটি আপনার শেষ সুযোগ। আর একবার ভুল পাসওয়ার্ড দিলে এই IP ও ডিভাইস ৪৮ ঘণ্টার জন্য ব্লক হবে।');
-            } elseif ($attempts >= 2) {
-                $remaining = $maxAttempts - $attempts;
-                setFlash('danger', sprintf('ভুল পাসওয়ার্ড। আপনি %d বার ভুল করেছেন; আর সর্বোচ্চ %d বার চেষ্টা করতে পারবেন।', $attempts, $remaining));
-            } else {
-                setFlash('danger', $genericMessage);
-            }
+        if (!$user) {
+            setFlash('danger', 'Session expired. Please log in again.');
             redirect('login.php');
         }
 
         session_regenerate_id(true);
         $_SESSION['user_id'] = (int) $user['id'];
         $_SESSION['user_role'] = (string) $user['role'];
-        $clearStmt = $pdo->prepare("DELETE FROM login_rate_limits WHERE rate_key IN ($placeholders)");
-        $clearStmt->execute($keys);
-        $pdo->commit();
-
+        unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_code']);
         setFlash('success', 'Login successful.');
         redirect($user['role'] === 'super_admin' ? 'admin/index.php' : 'index.php');
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        error_log('Login processing failed: ' . $e->getMessage());
-        setFlash('danger', $genericMessage);
+    }
+
+    $identity = trim((string) ($_POST['identity'] ?? ''));
+    $password = (string) ($_POST['password'] ?? '');
+    $pdo = Database::getInstance();
+
+    $userStmt = $pdo->prepare('SELECT * FROM users WHERE (username = :identity OR email = :email) AND status IN ("active", "inactive") LIMIT 1');
+    $userStmt->execute([':identity' => $identity, ':email' => $identity]);
+    $user = $userStmt->fetch();
+
+    if ($identity === '' || $password === '' || !$user || !password_verify($password, (string) $user['password_hash'])) {
+        // Keep same brute-force behavior as before, but user must be verified before login is allowed.
+        setFlash('danger', 'Invalid login credentials.');
         redirect('login.php');
     }
+
+    if ((int) $user['email_verified'] !== 1) {
+        setFlash('danger', 'Please verify your email address before logging in.');
+        redirect('login.php');
+    }
+
+    if ((int) $user['two_factor_enabled'] === 1) {
+        $code = str_pad((string) random_int(100000, 999999), 6, '0', STR_PAD_LEFT);
+        $_SESSION['pending_2fa_user_id'] = (int) $user['id'];
+        $_SESSION['pending_2fa_code'] = $code;
+        sendTwoFactorCodeEmail($user, $code);
+        setFlash('success', 'A two-factor verification code has been sent to your email.');
+        redirect('two-factor.php');
+    }
+
+    session_regenerate_id(true);
+    $_SESSION['user_id'] = (int) $user['id'];
+    $_SESSION['user_role'] = (string) $user['role'];
+    setFlash('success', 'Login successful.');
+    redirect($user['role'] === 'super_admin' ? 'admin/index.php' : 'index.php');
 }
 
 $flash = getFlash();
@@ -137,9 +92,7 @@ $flash = getFlash();
                 <div class="card border-0 shadow-sm">
                     <div class="card-body p-4">
                         <h2 class="mb-3">Login</h2>
-                        <?php if ($flash): ?>
-                            <div class="alert alert-<?= e((string) $flash['type']) ?>"><?= e((string) $flash['message']) ?></div>
-                        <?php endif; ?>
+                        <?php if ($flash): ?><div class="alert alert-<?= e((string) $flash['type']) ?>"><?= e((string) $flash['message']) ?></div><?php endif; ?>
                         <form method="post" autocomplete="off">
                             <input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>">
                             <div class="mb-3">
@@ -152,6 +105,7 @@ $flash = getFlash();
                             </div>
                             <button class="btn btn-primary w-100" type="submit">Login</button>
                         </form>
+                        <div class="mt-3 text-center"><a href="forgot-password.php">Forgot password?</a></div>
                     </div>
                 </div>
             </div>
