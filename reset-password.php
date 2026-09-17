@@ -8,18 +8,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
     $token = trim((string) ($_POST['token'] ?? '')); $password = (string) ($_POST['password'] ?? ''); $confirm = (string) ($_POST['password_confirmation'] ?? '');
     if (!preg_match('/^[a-f0-9]{64}$/', $token) || strlen($password) < 12 || !hash_equals($password, $confirm)) { setFlash('danger', 'Invalid reset request or password.'); redirect('forgot-password.php'); }
-    $pdo = Database::getInstance();
-    $stmt = $pdo->prepare('SELECT u.* FROM users u WHERE u.password_reset_token = :token AND u.password_reset_expires_at > UTC_TIMESTAMP() LIMIT 1'); $stmt->execute([':token' => $token]); $user = $stmt->fetch();
+    $pdo = Database::getInstance(); $stmt = $pdo->prepare('SELECT * FROM users WHERE password_reset_token = :token AND password_reset_expires_at > UTC_TIMESTAMP() LIMIT 1'); $stmt->execute([':token' => $token]); $user = $stmt->fetch();
     if (!$user) { setFlash('danger', 'This reset link is invalid or expired.'); redirect('forgot-password.php'); }
-    $ipKey = 'ip:' . hash('sha256', (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
-    $deviceToken = (string) ($_COOKIE['gadget50_device'] ?? '');
-    $deviceKey = 'device:' . hash('sha256', $deviceToken);
-    $identityKey = 'identity:' . hash('sha256', strtolower((string) $user['email']));
-    $keys = [$ipKey, $deviceKey, $identityKey]; $ph = implode(',', array_fill(0, count($keys), '?'));
-    $block = $pdo->prepare("SELECT COUNT(*) FROM login_rate_limits WHERE rate_key IN ($ph) AND blocked_until > UTC_TIMESTAMP()"); $block->execute($keys);
+    $keys = ['ip:' . hash('sha256', (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown')), 'device:' . hash('sha256', (string) ($_COOKIE['gadget50_device'] ?? '')), 'identity:' . hash('sha256', strtolower((string) $user['email']))]; $ph = implode(',', array_fill(0, count($keys), '?')); $block = $pdo->prepare("SELECT COUNT(*) FROM login_rate_limits WHERE rate_key IN ($ph) AND blocked_until > UTC_TIMESTAMP()"); $block->execute($keys);
     if ((int) $block->fetchColumn() > 0) { setFlash('danger', 'This account, device, or IP remains blocked for 48 hours. Password reset cannot bypass the block.'); redirect('login.php'); }
-    $update = $pdo->prepare('UPDATE users SET password_hash = :hash, password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = :id'); $update->execute([':hash' => password_hash($password, PASSWORD_DEFAULT), ':id' => (int) $user['id']]);
-    setFlash('success', 'Your password was reset successfully.'); redirect('login.php');
+    $update = $pdo->prepare('UPDATE users SET password_hash = :hash, password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = :id'); $update->execute([':hash' => password_hash($password, PASSWORD_DEFAULT), ':id' => (int) $user['id']]); setFlash('success', 'Your password was reset successfully.'); redirect('login.php');
 }
 $token = trim((string) ($_GET['token'] ?? '')); $flash = getFlash();
 ?>

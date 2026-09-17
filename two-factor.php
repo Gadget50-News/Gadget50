@@ -4,23 +4,16 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/email.php';
 
-if (isLoggedIn() || empty($_SESSION['pending_2fa_user_id']) || empty($_SESSION['pending_2fa_hash']) || empty($_SESSION['pending_2fa_expires'])) redirect('login.php');
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
-    $code = trim((string) ($_POST['two_factor_code'] ?? ''));
-    if (!preg_match('/^\d{6}$/', $code) || time() > (int) $_SESSION['pending_2fa_expires'] || !hash_equals((string) $_SESSION['pending_2fa_hash'], hash('sha256', $code))) {
-        setFlash('danger', 'Invalid or expired verification code.');
-        redirect('two-factor.php');
+    if (empty($_SESSION['pending_2fa_user_id']) || empty($_SESSION['pending_2fa_hash']) || time() > (int) ($_SESSION['pending_2fa_expires'] ?? 0)) {
+        unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_hash'], $_SESSION['pending_2fa_expires']); setFlash('danger', 'The verification session expired.'); redirect('login.php');
     }
-    $pdo = Database::getInstance();
-    $stmt = $pdo->prepare('SELECT id, role, status FROM users WHERE id = :id AND status = :status AND email_verified = 1 LIMIT 1');
-    $stmt->execute([':id' => (int) $_SESSION['pending_2fa_user_id'], ':status' => 'active']);
-    $user = $stmt->fetch();
+    $code = trim((string) ($_POST['two_factor_code'] ?? ''));
+    if (!preg_match('/^\d{6}$/', $code) || !hash_equals((string) $_SESSION['pending_2fa_hash'], hash('sha256', $code))) { setFlash('danger', 'Invalid verification code.'); redirect('two-factor.php'); }
+    $stmt = Database::getInstance()->prepare('SELECT id, role FROM users WHERE id = :id AND status = :status AND email_verified = 1 LIMIT 1'); $stmt->execute([':id' => (int) $_SESSION['pending_2fa_user_id'], ':status' => 'active']); $user = $stmt->fetch();
     if (!$user) { unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_hash'], $_SESSION['pending_2fa_expires']); setFlash('danger', 'Login session expired.'); redirect('login.php'); }
-    unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_hash'], $_SESSION['pending_2fa_expires']);
-    session_regenerate_id(true);
-    $_SESSION['user_id'] = (int) $user['id']; $_SESSION['user_role'] = (string) $user['role'];
-    setFlash('success', 'Login successful.'); redirect($user['role'] === 'super_admin' ? 'admin/index.php' : 'index.php');
+    unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_hash'], $_SESSION['pending_2fa_expires']); session_regenerate_id(true); $_SESSION['user_id'] = (int) $user['id']; $_SESSION['user_role'] = (string) $user['role']; setFlash('success', 'Login successful.'); redirect($user['role'] === 'super_admin' ? 'admin/index.php' : 'index.php');
 }
 $flash = getFlash();
 ?>
