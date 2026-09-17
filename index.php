@@ -1,11 +1,10 @@
 <?php
-
 declare(strict_types=1);
 
 require_once __DIR__ . '/includes/bootstrap.php';
 
 $siteName = getSetting('site_name', APP_NAME);
-$breakingNews = getSetting('breaking_news', 'Latest headlines from Gadget 50');
+$breakingNews = getSetting('breaking_news', 'Latest technology and business updates');
 $headerText = getSetting('header_text', 'Breaking stories, trusted reporting.');
 $footerCopyright = getSetting('footer_copyright', '© ' . date('Y') . ' Gadget 50. All rights reserved.');
 
@@ -80,7 +79,7 @@ try {
                 <div class="col-lg-8">
                     <p class="text-uppercase text-primary fw-bold mb-2">Featured</p>
                     <h1 class="display-5 fw-bold mb-3"><?= htmlspecialchars($siteName, ENT_QUOTES, 'UTF-8') ?></h1>
-                    <p class="lead text-muted">A modern public news platform built with native PHP and MySQL for secure, scalable publishing.</p>
+                    <p class="lead text-muted">A modern public news platform built with pure native PHP and MySQL for secure, scalable publishing.</p>
                 </div>
                 <div class="col-lg-4 text-center">
                     <div class="card border-0 shadow-sm bg-light p-4">

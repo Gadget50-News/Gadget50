@@ -8,10 +8,6 @@ body {
     background: linear-gradient(90deg, #111827, #1f2937);
 }
 
-.hero {
-    padding: 2rem 0;
-}
-
 .news-card {
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
     border-radius: 14px;
