@@ -1,4 +1,6 @@
--- Correct SQL migration for existing installations.
+-- Email verification, password reset, 2FA, and persistent login-lockout support.
+-- Run this migration once on an existing installation after taking a backup.
+
 CREATE TABLE IF NOT EXISTS login_rate_limits (
     rate_key VARCHAR(150) NOT NULL PRIMARY KEY,
     failed_attempts INT UNSIGNED NOT NULL DEFAULT 0,

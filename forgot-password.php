@@ -2,7 +2,8 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/includes/bootstrap.php';
+require_once __DIR__ . '/includes/email.php';
 
 if (isLoggedIn()) {
     redirect('index.php');
@@ -21,12 +22,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user = $stmt->fetch();
     }
 
-    if (!$user) {
-        setFlash('danger', 'If that account exists, a password reset email will be sent.');
-        redirect('forgot-password.php');
+    // Keep the response identical whether or not the account exists.
+    if ($user) {
+        sendPasswordResetEmail($user);
     }
 
-    sendPasswordResetEmail($user);
     setFlash('success', 'If that account exists, a password reset email has been sent.');
     redirect('forgot-password.php');
 }
