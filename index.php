@@ -1,7 +1,17 @@
 <?php
+
 declare(strict_types=1);
 
-require_once __DIR__ . '/includes/bootstrap.php';
+session_start();
+
+if (!file_exists(__DIR__ . '/config.php')) {
+    header('Location: install.php');
+    exit;
+}
+
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes/database.php';
+require_once __DIR__ . '/includes/functions.php';
 
 $siteName = getSetting('site_name', APP_NAME);
 $breakingNews = getSetting('breaking_news', 'Latest technology and business updates');
@@ -14,21 +24,34 @@ try {
     $menusStmt->execute([':status' => 'active']);
     $menus = $menusStmt->fetchAll();
 
-    $newsStmt = $pdo->prepare(
-        'SELECT n.*, c.name AS category_name, u.username AS author_username
-         FROM news n
-         LEFT JOIN categories c ON c.id = n.category_id
-         LEFT JOIN users u ON u.id = n.author_id
-         WHERE n.status = :status
-         ORDER BY n.created_at DESC
-         LIMIT 6'
-    );
-    $newsStmt->execute([':status' => 'published']);
+    $categoryFilter = trim((string) ($_GET['category'] ?? ''));
+    $newsSql = 'SELECT n.*, c.name AS category_name, u.username AS author_username
+        FROM news n
+        LEFT JOIN categories c ON c.id = n.category_id
+        LEFT JOIN users u ON u.id = n.author_id
+        WHERE n.status = :status';
+    $params = [':status' => 'published'];
+
+    if ($categoryFilter !== '') {
+        $newsSql .= ' AND c.slug = :slug';
+        $params[':slug'] = $categoryFilter;
+    }
+
+    $newsSql .= ' ORDER BY n.created_at DESC';
+    $newsStmt = $pdo->prepare($newsSql);
+    $newsStmt->execute($params);
     $news = $newsStmt->fetchAll();
+
+    $categoriesStmt = $pdo->query('SELECT * FROM categories WHERE status = "active" ORDER BY name ASC');
+    $categories = $categoriesStmt->fetchAll();
 } catch (Throwable $e) {
     $menus = [];
     $news = [];
+    $categories = [];
 }
+
+$user = currentUser();
+$flash = getFlash();
 ?>
 <!doctype html>
 <html lang="en">
@@ -61,15 +84,28 @@ try {
                         </li>
                     <?php endforeach; ?>
                 </ul>
-                <div class="d-flex gap-2">
-                    <a class="btn btn-outline-primary" href="login.php">Login</a>
-                    <a class="btn btn-primary" href="register.php">Register</a>
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <?php if ($user): ?>
+                        <span class="small text-muted">Hi, <?= htmlspecialchars((string) $user['username'], ENT_QUOTES, 'UTF-8') ?></span>
+                        <?php if ($user['role'] === 'super_admin'): ?>
+                            <a class="btn btn-outline-primary btn-sm" href="admin/index.php">Admin</a>
+                        <?php endif; ?>
+                        <a class="btn btn-primary btn-sm" href="submit.php">Submit News</a>
+                        <a class="btn btn-outline-secondary btn-sm" href="logout.php">Logout</a>
+                    <?php else: ?>
+                        <a class="btn btn-outline-primary btn-sm" href="login.php">Login</a>
+                        <a class="btn btn-primary btn-sm" href="register.php">Register</a>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
     </nav>
 
     <main class="container py-5">
+        <?php if ($flash): ?>
+            <div class="alert alert-<?= htmlspecialchars($flash['type'], ENT_QUOTES, 'UTF-8') ?>" role="alert"><?= htmlspecialchars($flash['message'], ENT_QUOTES, 'UTF-8') ?></div>
+        <?php endif; ?>
+
         <?php if (isset($_GET['installed']) && $_GET['installed'] === '1'): ?>
             <div class="alert alert-success">Installation successful. Welcome to Gadget 50.</div>
         <?php endif; ?>
@@ -90,6 +126,15 @@ try {
             </div>
         </section>
 
+        <section class="mb-4">
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-sm btn-primary" href="index.php">All</a>
+                <?php foreach ($categories as $category): ?>
+                    <a class="btn btn-sm btn-outline-primary" href="index.php?category=<?= urlencode((string) $category['slug']) ?>"><?= htmlspecialchars((string) $category['name'], ENT_QUOTES, 'UTF-8') ?></a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+
         <section class="row g-4">
             <?php if (!empty($news)): ?>
                 <?php foreach ($news as $item): ?>
@@ -100,7 +145,7 @@ try {
                                 <h5 class="card-title"><?= htmlspecialchars((string) $item['title'], ENT_QUOTES, 'UTF-8') ?></h5>
                                 <p class="card-text text-muted"><?= htmlspecialchars(substr(strip_tags((string) $item['content']), 0, 120), ENT_QUOTES, 'UTF-8') ?>...</p>
                             </div>
-                            <div class="card-footer bg-white border-0">
+                            <div class="card-footer bg-white border-0 d-flex justify-content-between flex-wrap align-items-center">
                                 <small class="text-muted">
                                     <?php if ((int) $item['is_anonymous'] === 1): ?>
                                         By Anonymous
@@ -108,6 +153,7 @@ try {
                                         By <?= htmlspecialchars((string) ($item['author_username'] ?? 'Member'), ENT_QUOTES, 'UTF-8') ?>
                                     <?php endif; ?>
                                 </small>
+                                <small class="text-muted"><?= htmlspecialchars(date('M d, Y', strtotime((string) $item['created_at'])), ENT_QUOTES, 'UTF-8') ?></small>
                             </div>
                         </article>
                     </div>

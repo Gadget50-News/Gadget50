@@ -21,3 +21,7 @@ body {
 .navbar-brand {
     letter-spacing: 0.02em;
 }
+
+.card {
+    border-radius: 14px;
+}

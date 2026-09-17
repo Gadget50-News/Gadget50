@@ -1,27 +1,27 @@
 <?php
+
 declare(strict_types=1);
 
-function e(string $value): string
+function redirect(string $path): void
 {
-    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+    header('Location: ' . $path);
+    exit;
 }
 
-function getSetting(string $key, string $default = ''): string
+function setFlash(string $type, string $message): void
 {
-    try {
-        $pdo = Database::getInstance();
-        $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = :key LIMIT 1');
-        $stmt->execute([':key' => $key]);
-        $row = $stmt->fetch();
+    $_SESSION['flash'] = ['type' => $type, 'message' => $message];
+}
 
-        if ($row && $row['setting_value'] !== null) {
-            return (string) $row['setting_value'];
-        }
-
-        return $default;
-    } catch (Throwable $e) {
-        return $default;
+function getFlash(): ?array
+{
+    if (!isset($_SESSION['flash'])) {
+        return null;
     }
+
+    $flash = $_SESSION['flash'];
+    unset($_SESSION['flash']);
+    return $flash;
 }
 
 function isLoggedIn(): bool
@@ -45,10 +45,30 @@ function currentUser(): ?array
     }
 }
 
-function requireLogin(): void
+function requireLogin(string $redirectTo = 'login.php'): void
 {
     if (!isLoggedIn()) {
-        header('Location: login.php');
-        exit;
+        redirect($redirectTo);
+    }
+}
+
+function requireRole(string $role, string $redirectTo = 'login.php'): void
+{
+    $user = currentUser();
+    if (!$user || (string) $user['role'] !== $role) {
+        redirect($redirectTo);
+    }
+}
+
+function getSetting(string $key, string $default = ''): string
+{
+    try {
+        $pdo = Database::getInstance();
+        $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = :key LIMIT 1');
+        $stmt->execute([':key' => $key]);
+        $row = $stmt->fetch();
+        return ($row && $row['setting_value'] !== null) ? (string) $row['setting_value'] : $default;
+    } catch (Throwable $e) {
+        return $default;
     }
 }
