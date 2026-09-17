@@ -10,11 +10,31 @@ if (isLoggedIn()) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
+
     $identity = trim((string) ($_POST['identity'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
+    $ipKey = 'login:' . md5($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+
+    if (!isset($_SESSION['rate_limit'])) {
+        $_SESSION['rate_limit'] = [];
+    }
+
+    $bucket = $_SESSION['rate_limit'][$ipKey] ?? ['count' => 0, 'timestamp' => time()];
+    $now = time();
+    if (($now - (int) $bucket['timestamp']) > 300) {
+        $bucket = ['count' => 0, 'timestamp' => $now];
+    }
+
+    if ((int) $bucket['count'] >= 5) {
+        setFlash('danger', 'Too many login attempts. Please try again later.');
+        redirect('login.php');
+    }
 
     if ($identity === '' || $password === '') {
-        setFlash('danger', 'All fields are required.');
+        $bucket['count'] = (int) $bucket['count'] + 1;
+        $bucket['timestamp'] = $now;
+        $_SESSION['rate_limit'][$ipKey] = $bucket;
+        setFlash('danger', 'Invalid login credentials.');
         redirect('login.php');
     }
 
@@ -23,6 +43,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user = $stmt->fetch();
 
     if (!$user || !password_verify($password, (string) $user['password_hash'])) {
+        $bucket['count'] = (int) $bucket['count'] + 1;
+        $bucket['timestamp'] = $now;
+        $_SESSION['rate_limit'][$ipKey] = $bucket;
         setFlash('danger', 'Invalid login credentials.');
         redirect('login.php');
     }
@@ -30,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     session_regenerate_id(true);
     $_SESSION['user_id'] = (int) $user['id'];
     $_SESSION['user_role'] = (string) $user['role'];
+    unset($_SESSION['rate_limit'][$ipKey]);
     setFlash('success', 'Login successful.');
     redirect($user['role'] === 'super_admin' ? 'admin/index.php' : 'index.php');
 }
@@ -37,5 +61,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $flash = getFlash();
 ?>
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Login | Gadget 50</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head>
-<body class="bg-light"><main class="container py-5"><div class="row justify-content-center"><div class="col-md-5"><div class="card border-0 shadow-sm"><div class="card-body p-4"><h2 class="mb-3">Login</h2><?php if ($flash): ?><div class="alert alert-<?= e((string) $flash['type']) ?>"><?= e((string) $flash['message']) ?></div><?php endif; ?><form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>"><div class="mb-3"><label class="form-label">Username or Email</label><input type="text" name="identity" class="form-control" required></div><div class="mb-3"><label class="form-label">Password</label><input type="password" name="password" class="form-control" required></div><button class="btn btn-primary w-100">Login</button></form><div class="mt-3 text-center small"><a href="register.php">Create an account</a> <span class="mx-2">|</span> <a href="index.php">Back to home</a></div></div></div></div></div></main></body></html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | Gadget 50</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <main class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-md-5">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <h2 class="mb-3">Login</h2>
+                        <?php if ($flash): ?>
+                            <div class="alert alert-<?= e((string) $flash['type']) ?>"><?= e((string) $flash['message']) ?></div>
+                        <?php endif; ?>
+                        <form method="post" autocomplete="off">
+                            <input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>">
+                            <div class="mb-3">
+                                <label class="form-label">Username or Email</label>
+                                <input class="form-control" type="text" name="identity" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Password</label>
+                                <input class="form-control" type="password" name="password" required>
+                            </div>
+                            <button class="btn btn-primary w-100" type="submit">Login</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
