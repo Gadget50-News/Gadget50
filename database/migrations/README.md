@@ -1,18 +1,21 @@
--- Run this migration on an existing Gadget50 database before deploying the login changes:
--- mysql -u USER -p DATABASE < database/migrations/001_login_rate_limits.sql
---
--- Behavior:
--- * Attempts are tracked server-side by a SHA-256 key for the client IP and submitted identity.
--- * The fifth failed attempt sets blocked_until to 48 hours in the future.
--- * A successful login clears both applicable counters.
--- * Errors remain generic so account existence is not disclosed.
-
 # Login protection deployment note
 
-The login limiter now requires the `login_rate_limits` table. Existing installations must run:
+The login limiter is persistent and server-side. It tracks a hashed IP key and a hashed device-cookie key.
+
+Behavior:
+
+- Attempts 1–2 show a generic invalid-credentials response.
+- From attempt 2 onward, the form reports the failed count and remaining attempts.
+- On the final remaining attempt, the form warns that another failure triggers a block.
+- The fifth failed attempt sets `blocked_until` to 48 hours in the future.
+- The block is checked before password verification, so a correct password cannot bypass it.
+- A successful login clears the matching IP and device counters.
+- The database stores hashes, not raw IP addresses or device tokens.
+
+Apply the migration before deploying `login.php`:
 
 ```bash
 mysql -u DATABASE_USER -p DATABASE_NAME < database/migrations/001_login_rate_limits.sql
 ```
 
-Do not remove old login records or user records. Take a database backup before applying the migration.
+Create a database backup before running the migration. This implementation treats the IP block as authoritative; therefore, users behind the same public IP can be affected by an IP-based lockout. Device cookies add a second server-side signal but cannot be considered an unchangeable phone identifier because users can clear cookies.
