@@ -8,12 +8,9 @@ ErrorDocument 404 /404.php
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
-
-    RewriteCond %{REQUEST_FILENAME} -f
     RewriteCond %{REQUEST_URI} ^/install\.php$ [NC]
     RewriteCond %{DOCUMENT_ROOT}/install.lock -f
     RewriteRule ^install\.php$ / [R=302,L]
-
     RewriteRule ^news/([^/]+)/?$ /news.php?slug=$1 [QSA,L]
     RewriteRule ^category/([^/]+)/?$ /index.php?category=$1 [QSA,L]
     RewriteRule ^tag/([^/]+)/?$ /index.php?tag=$1 [QSA,L]
@@ -26,11 +23,9 @@ ErrorDocument 404 /404.php
     RewriteRule ^logout/?$ /logout.php [L]
     RewriteRule ^submit/?$ /submit.php [L]
     RewriteRule ^404/?$ /404.php [L]
-
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
-
     RewriteRule ^ /404.php [L]
 </IfModule>
 
