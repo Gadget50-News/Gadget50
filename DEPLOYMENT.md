@@ -1,15 +1,23 @@
-# Final deployment policy
+# Deployment
 
-The source changes are complete for this implementation scope, but live infrastructure testing is not possible from GitHub.
+## cPanel/shared hosting
 
-Required before production:
+Upload the files with File Manager or SFTP, create a MySQL database/user, open `install.php`, and finish setup in the browser. Confirm that `config.php`, `install.lock`, and `database/` are denied by the server. Enable HTTPS and configure email from the dashboard.
 
-1. Back up database and files.
-2. Run both SQL migrations on staging, then production.
-3. Configure Zoho with an App Password and a verified sender address.
-4. Use Admin > Site Settings > Test SMTP.
-5. Run PHP syntax checks: `find . -name '*.php' -print0 | xargs -0 -n1 php -l`.
-6. Test registration, email verification, login, 2FA, lockout, password reset, blocked reset, logout, admin authorization, clean URLs and 404s.
-7. Confirm HTTPS, secure cookies, error logging, file-upload protection, backups, WAF/CDN and monitoring.
+## Localhost
 
-The repository cannot honestly report a live test or a security percentage without the hosting environment and database. Report any staging error with its exact message and URL for the next fix.
+Place the folder under XAMPP `htdocs`, WAMP `www`, or Laragon `www`, start Apache and MySQL, create an empty database in phpMyAdmin, and browse to the folder's `install.php` URL.
+
+## InfinityFree/free hosting
+
+The PHP application can be uploaded like any other shared-hosting site, but SMTP socket access, `.htaccess`, PHP extensions, and writable permissions vary. Run diagnostics first. If outbound SMTP is blocked, do not activate Email Service or email-based 2FA; use an allowed relay or another compatible host.
+
+## Production checklist
+
+- HTTPS enabled and secure cookies confirmed
+- install.php denied after installation
+- config.php and install.lock protected
+- database and uploads backed up
+- email tested before 2FA is enabled
+- error logs enabled without displaying secrets
+- staging test completed for registration, reset, login, 2FA, logout, uploads, routing, and 404
