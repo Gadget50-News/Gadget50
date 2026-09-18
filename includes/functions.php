@@ -4,23 +4,25 @@ declare(strict_types=1);
 function appBasePath(): string
 {
     $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/'));
-    $base = dirname($script);
-    if ($base === '/' || $base === '.' || $base === '\\') return '';
-    if (str_ends_with($base, '/admin')) $base = dirname($base);
-    return '/' . trim($base, '/');
+    $directory = dirname($script);
+    if ($directory === '/' || $directory === '.' || $directory === '\\') return '';
+    if (str_ends_with($directory, '/admin')) $directory = dirname($directory);
+    return '/' . trim($directory, '/');
 }
 
 function appUrl(string $path = ''): string
 {
     $path = trim($path);
-    if (preg_match('#^https?://#i', $path) === 1) return $path;
+    if (preg_match('#^(?:https?:)?//#i', $path) === 1) return $path;
     $configured = rtrim(getSetting('site_url', ''), '/');
-    if ($configured !== '' && preg_match('#^https?://#i', $configured) === 1) {
-        return $configured . ($path === '' ? '' : '/' . ltrim($path, '/'));
-    }
-    return rtrim(appBasePath(), '/') . '/' . ltrim($path, '/');
+    $relative = ltrim($path, '/');
+    $base = $configured !== '' && preg_match('#^https?://#i', $configured) === 1
+        ? $configured
+        : rtrim(appBasePath(), '/');
+    return $relative === '' ? ($base === '' ? '/' : $base . '/') : $base . '/' . $relative;
 }
 
+function assetUrl(string $path): string { return appUrl($path); }
 function redirect(string $path): void { header('Location: ' . appUrl($path), true, 302); exit; }
 function e(string $value): string { return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function setFlash(string $type, string $message): void { $_SESSION['flash'] = ['type' => $type, 'message' => $message]; }
