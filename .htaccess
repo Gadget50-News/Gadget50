@@ -4,29 +4,29 @@ Options -Indexes
     Require all denied
 </FilesMatch>
 
-ErrorDocument 404 /404.php
+ErrorDocument 404 404.php
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteCond %{REQUEST_URI} ^/install\.php$ [NC]
-    RewriteCond %{DOCUMENT_ROOT}/install.lock -f
-    RewriteRule ^install\.php$ / [R=302,L]
-    RewriteRule ^news/([^/]+)/?$ /news.php?slug=$1 [QSA,L]
-    RewriteRule ^category/([^/]+)/?$ /index.php?category=$1 [QSA,L]
-    RewriteRule ^tag/([^/]+)/?$ /index.php?tag=$1 [QSA,L]
-    RewriteRule ^author/([^/]+)/?$ /index.php?author=$1 [QSA,L]
-    RewriteRule ^user/([^/]+)/?$ /index.php?user=$1 [QSA,L]
-    RewriteRule ^admin/?$ /admin/index.php [L]
-    RewriteRule ^dashboard/?$ /dashboard.php [L]
-    RewriteRule ^login/?$ /login.php [L]
-    RewriteRule ^register/?$ /register.php [L]
-    RewriteRule ^logout/?$ /logout.php [L]
-    RewriteRule ^submit/?$ /submit.php [L]
-    RewriteRule ^404/?$ /404.php [L]
+
+    # PHP handles the installation lock and subfolder-aware redirects.
+    RewriteRule ^news/([^/]+)/?$ news.php?slug=$1 [QSA,L]
+    RewriteRule ^category/([^/]+)/?$ index.php?category=$1 [QSA,L]
+    RewriteRule ^tag/([^/]+)/?$ index.php?tag=$1 [QSA,L]
+    RewriteRule ^author/([^/]+)/?$ index.php?author=$1 [QSA,L]
+    RewriteRule ^user/([^/]+)/?$ index.php?user=$1 [QSA,L]
+    RewriteRule ^admin/?$ admin/index.php [L]
+    RewriteRule ^dashboard/?$ dashboard.php [L]
+    RewriteRule ^login/?$ login.php [L]
+    RewriteRule ^register/?$ register.php [L]
+    RewriteRule ^logout/?$ logout.php [L]
+    RewriteRule ^submit/?$ submit.php [L]
+    RewriteRule ^404/?$ 404.php [L]
+
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
-    RewriteRule ^ /404.php [L]
+    RewriteRule ^ 404.php [L]
 </IfModule>
 
 <IfModule mod_headers.c>
