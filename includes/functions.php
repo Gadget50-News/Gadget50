@@ -4,22 +4,30 @@ declare(strict_types=1);
 function appBasePath(): string
 {
     $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/'));
-    $base = dirname($script);
-    if ($base === '/' || $base === '.' || $base === '\\') return '';
-    if (str_ends_with($base, '/admin')) $base = dirname($base);
-    return '/' . trim($base, '/');
+    $directory = dirname($script);
+    if ($directory === '/' || $directory === '.' || $directory === '\\') {
+        return '';
+    }
+    if (str_ends_with($directory, '/admin')) {
+        $directory = dirname($directory);
+    }
+    return '/' . trim($directory, '/');
 }
 
 function appUrl(string $path = ''): string
 {
     $path = trim($path);
-    if ($path === '') return appBasePath() === '' ? '/' : appBasePath();
-    if (preg_match('#^https?://#i', $path) === 1) return $path;
-    $base = rtrim((string) getSetting('site_url', ''), '/');
-    if ($base !== '' && preg_match('#^https?://#i', $base) === 1) {
-        return $base . '/' . ltrim($path, '/');
+    if (preg_match('#^https?://#i', $path) === 1) {
+        return $path;
     }
-    return rtrim(appBasePath(), '/') . '/' . ltrim($path, '/');
+
+    $configured = rtrim(getSetting('site_url', ''), '/');
+    if ($configured !== '' && preg_match('#^https?://#i', $configured) === 1) {
+        return $configured . ($path === '' ? '' : '/' . ltrim($path, '/'));
+    }
+
+    $base = rtrim(appBasePath(), '/');
+    return $base . '/' . ltrim($path, '/');
 }
 
 function redirect(string $path): void
@@ -87,17 +95,13 @@ function currentUser(): ?array
 
 function requireLogin(string $redirectTo = 'login.php'): void
 {
-    if (!isLoggedIn()) {
-        redirect($redirectTo);
-    }
+    if (!isLoggedIn()) redirect($redirectTo);
 }
 
 function requireRole(string $role, string $redirectTo = 'login.php'): void
 {
     $user = currentUser();
-    if (!$user || $user['role'] !== $role || $user['status'] !== 'active') {
-        redirect($redirectTo);
-    }
+    if (!$user || $user['role'] !== $role || $user['status'] !== 'active') redirect($redirectTo);
 }
 
 function getSetting(string $key, string $default = ''): string
@@ -114,26 +118,33 @@ function getSetting(string $key, string $default = ''): string
 
 function setSetting(PDO $pdo, string $key, string $value): void
 {
-    $stmt = $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (:key, :value) ON DUPLICATE KEY UPDATE setting_value = :value_update, updated_at = CURRENT_TIMESTAMP');
-    $stmt->execute([':key' => $key, ':value' => $value, ':value_update' => $value]);
+    $stmt = $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (:key, :value) ON DUPLICATE KEY UPDATE setting_value = :updated_value, updated_at = CURRENT_TIMESTAMP');
+    $stmt->execute([':key' => $key, ':value' => $value, ':updated_value' => $value]);
 }
 
 function slugify(string $value): string
 {
-    $value = strtolower(trim((string) $value));
+    $value = strtolower(trim($value));
     $value = preg_replace('/[^a-z0-9]+/i', '-', $value);
-    $value = preg_replace('/-+/', '-', (string) $value);
-    $value = trim((string) $value, '-');
+    $value = trim((string) preg_replace('/-+/', '-', (string) $value), '-');
     return $value !== '' ? $value : 'item-' . bin2hex(random_bytes(4));
 }
 
 function sanitizeSlug(string $value): string
 {
-    $value = trim((string) $value);
-    $value = strtolower($value);
+    $value = strtolower(trim($value));
     $value = preg_replace('/[^a-z0-9-]+/', '-', $value);
-    $value = preg_replace('/-+/', '-', $value);
-    return trim((string) $value, '-');
+    return trim((string) preg_replace('/-+/', '-', (string) $value), '-');
+}
+
+function isSafeMenuUrl(string $url): bool
+{
+    $url = trim($url);
+    if ($url === '' || preg_match('/^(javascript|data|vbscript):/i', $url)) return false;
+    foreach (['http://', 'https://', '/', '#', 'mailto:', 'tel:'] as $prefix) {
+        if (str_starts_with(strtolower($url), $prefix)) return true;
+    }
+    return preg_match('/^[a-zA-Z0-9_\/\-.?#=&%]+$/', $url) === 1;
 }
 
 function validMenuPosition(string $position): bool
@@ -141,23 +152,9 @@ function validMenuPosition(string $position): bool
     return in_array($position, ['header', 'footer', 'sidebar'], true);
 }
 
-function isSafeMenuUrl(string $url): bool
-{
-    $url = trim((string) $url);
-    if ($url === '') return false;
-    $lower = strtolower($url);
-    if (preg_match('/^(javascript|data|vbscript):/i', $lower)) return false;
-    $allowedPrefixes = ['http://', 'https://', '/', '#', 'mailto:', 'tel:'];
-    foreach ($allowedPrefixes as $prefix) {
-        if (str_starts_with($lower, $prefix)) return true;
-    }
-    return preg_match('/^[a-zA-Z0-9_\/\-\.?#=&%]+$/', $url) === 1;
-}
-
 function isReservedRoute(string $value): bool
 {
-    $reserved = ['admin', 'login', 'register', 'dashboard', 'logout', 'news', 'category', 'tag', 'author', 'user', 'search', 'install', '404', 'submit', 'index'];
-    return in_array(strtolower(trim((string) $value)), $reserved, true);
+    return in_array(strtolower(trim($value)), ['admin', 'login', 'register', 'dashboard', 'logout', 'news', 'category', 'tag', 'author', 'user', 'search', 'install', '404', 'submit', 'index'], true);
 }
 
 function generateSecureToken(int $length = 32): string
@@ -168,17 +165,14 @@ function generateSecureToken(int $length = 32): string
 function generateUniqueSlug(PDO $pdo, string $table, string $column, string $value, ?int $id = null): string
 {
     $base = sanitizeSlug($value) ?: 'untitled';
-    $candidate = $base;
-    $counter = 2;
-    while (true) {
+    for ($counter = 0; ; $counter++) {
+        $candidate = $counter === 0 ? $base : $base . '-' . ($counter + 1);
         $sql = 'SELECT id FROM ' . $table . ' WHERE ' . $column . ' = :slug' . ($id !== null ? ' AND id != :id' : '');
         $stmt = $pdo->prepare($sql);
         $params = [':slug' => $candidate];
         if ($id !== null) $params[':id'] = $id;
         $stmt->execute($params);
         if (!$stmt->fetch()) return $candidate;
-        $candidate = $base . '-' . $counter;
-        $counter++;
     }
 }
 
@@ -188,33 +182,23 @@ function uploadNewsImage(array $file): ?string
     if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) throw new RuntimeException('Image upload failed.');
     $tmpName = (string) ($file['tmp_name'] ?? '');
     if (!is_uploaded_file($tmpName)) throw new RuntimeException('Invalid upload source.');
-    $size = (int) ($file['size'] ?? 0);
-    if ($size <= 0 || $size > 5 * 1024 * 1024) throw new RuntimeException('Images must be between 1 byte and 5 MB.');
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->file($tmpName);
-    if ($mime === false) throw new RuntimeException('Unable to detect file type.');
+    if ((int) ($file['size'] ?? 0) <= 0 || (int) $file['size'] > 5 * 1024 * 1024) throw new RuntimeException('Images must be between 1 byte and 5 MB.');
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($tmpName);
     $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
     if (!isset($allowed[$mime])) throw new RuntimeException('Only JPG, PNG, WEBP, and GIF images are allowed.');
     $directory = __DIR__ . '/../uploads/news';
     if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) throw new RuntimeException('Upload directory is unavailable.');
     $name = bin2hex(random_bytes(16)) . '.' . $allowed[$mime];
-    $destination = $directory . '/' . $name;
-    if (!move_uploaded_file($tmpName, $destination)) throw new RuntimeException('Could not save the image.');
+    if (!move_uploaded_file($tmpName, $directory . '/' . $name)) throw new RuntimeException('Could not save the image.');
     return 'uploads/news/' . $name;
 }
 
 function rateLimitCheck(string $key): bool
 {
-    $limit = 5;
-    $window = 300;
     $now = time();
     $bucket = $_SESSION['rate_limit'][$key] ?? ['count' => 0, 'timestamp' => $now];
-    if (($now - (int) $bucket['timestamp']) > $window) {
-        $bucket = ['count' => 0, 'timestamp' => $now];
-    }
-    if ((int) $bucket['count'] >= $limit) return false;
-    $bucket['count'] = (int) $bucket['count'] + 1;
-    $bucket['timestamp'] = $now;
-    $_SESSION['rate_limit'][$key] = $bucket;
+    if ($now - (int) $bucket['timestamp'] > 300) $bucket = ['count' => 0, 'timestamp' => $now];
+    if ((int) $bucket['count'] >= 5) return false;
+    $_SESSION['rate_limit'][$key] = ['count' => (int) $bucket['count'] + 1, 'timestamp' => $now];
     return true;
 }
