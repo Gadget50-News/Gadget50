@@ -1,15 +1,27 @@
-# Final deployment policy
+# Deployment status
 
-The source changes are complete for this implementation scope, but live infrastructure testing is not possible from GitHub.
+The implementation work is on the `universal-hosting-email-2fa-audit` branch.
 
-Required before production:
+## Completed in this branch
 
-1. Back up database and files.
-2. Run both SQL migrations on staging, then production.
-3. Configure Zoho with an App Password and a verified sender address.
-4. Use Admin > Site Settings > Test SMTP.
-5. Run PHP syntax checks: `find . -name '*.php' -print0 | xargs -0 -n1 php -l`.
-6. Test registration, email verification, login, 2FA, lockout, password reset, blocked reset, logout, admin authorization, clean URLs and 404s.
-7. Confirm HTTPS, secure cookies, error logging, file-upload protection, backups, WAF/CDN and monitoring.
+- Browser-based fresh-install schema includes core CMS tables, authentication challenges, and audit logs.
+- Email service is explicitly disabled until SMTP configuration passes a test.
+- Gmail, Zoho, and custom SMTP settings are supported by the mail service layer.
+- Login 2FA uses expiring, hashed challenge records and does not bypass failed email delivery.
+- User dashboard includes per-user 2FA availability handling.
+- Apache rewrite rules use relative substitutions so the project can be installed in a subfolder.
+- Logout and generated application links use the centralized URL helper where the updated files support it.
 
-The repository cannot honestly report a live test or a security percentage without the hosting environment and database. Report any staging error with its exact message and URL for the next fix.
+## Required target-host verification
+
+GitHub cannot run PHP, MySQL, Apache, or an SMTP provider. Before production, run the application on staging and verify:
+
+1. Fresh browser installation and invalid database credentials.
+2. Existing-install migration `database/migrations/003_email_service_and_auth_challenges.sql`.
+3. Registration with Email Service OFF and ON.
+4. Gmail App Password, Zoho SMTP, and custom SMTP test delivery.
+5. Login with 2FA OFF, ON, invalid code, expired code, and SMTP failure.
+6. Subfolder routing, clean URLs, logout, uploads, and the custom 404.
+7. PHP syntax checks and secure permissions for `config.php`, `install.lock`, `database/`, and `uploads/`.
+
+No live-host test or SMTP delivery result is claimed by this repository change.

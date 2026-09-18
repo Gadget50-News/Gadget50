@@ -1,20 +1,38 @@
 <?php
 declare(strict_types=1);
 
-function redirect(string $path): void
+function appBasePath(): string
+{
+    $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/'));
+    $directory = dirname($script);
+    if ($directory === '/' || $directory === '.' || $directory === '\\') {
+        return '';
+    }
+    if (str_ends_with($directory, '/admin')) {
+        $directory = dirname($directory);
+    }
+    return '/' . trim($directory, '/');
+}
+
+function appUrl(string $path = ''): string
 {
     $path = trim($path);
-    if ($path === '') {
-        $path = '/';
-    }
-
     if (preg_match('#^https?://#i', $path) === 1) {
-        header('Location: ' . $path, true, 302);
-        exit;
+        return $path;
     }
 
-    $path = ltrim($path, '/');
-    header('Location: /' . $path, true, 302);
+    $configured = rtrim(getSetting('site_url', ''), '/');
+    if ($configured !== '' && preg_match('#^https?://#i', $configured) === 1) {
+        return $configured . ($path === '' ? '' : '/' . ltrim($path, '/'));
+    }
+
+    $base = rtrim(appBasePath(), '/');
+    return $base . '/' . ltrim($path, '/');
+}
+
+function redirect(string $path): void
+{
+    header('Location: ' . appUrl($path), true, 302);
     exit;
 }
 
@@ -53,7 +71,7 @@ function verifyCsrf(): void
     $token = (string) ($_POST['csrf_token'] ?? '');
     if ($token === '' || !hash_equals(csrfToken(), $token)) {
         http_response_code(419);
-        exit('Invalid or expired form token. Please go back and try again.');
+        exit('Invalid or expired form token.');
     }
 }
 
@@ -64,32 +82,26 @@ function isLoggedIn(): bool
 
 function currentUser(): ?array
 {
-    if (!isLoggedIn()) {
-        return null;
-    }
-
+    if (!isLoggedIn()) return null;
     try {
         $stmt = Database::getInstance()->prepare('SELECT * FROM users WHERE id = :id LIMIT 1');
         $stmt->execute([':id' => (int) $_SESSION['user_id']]);
         return $stmt->fetch() ?: null;
     } catch (Throwable $e) {
+        error_log('Current user lookup failed: ' . $e->getMessage());
         return null;
     }
 }
 
 function requireLogin(string $redirectTo = 'login.php'): void
 {
-    if (!isLoggedIn()) {
-        redirect($redirectTo);
-    }
+    if (!isLoggedIn()) redirect($redirectTo);
 }
 
 function requireRole(string $role, string $redirectTo = 'login.php'): void
 {
     $user = currentUser();
-    if (!$user || $user['role'] !== $role || $user['status'] !== 'active') {
-        redirect($redirectTo);
-    }
+    if (!$user || $user['role'] !== $role || $user['status'] !== 'active') redirect($redirectTo);
 }
 
 function getSetting(string $key, string $default = ''): string
@@ -104,45 +116,35 @@ function getSetting(string $key, string $default = ''): string
     }
 }
 
+function setSetting(PDO $pdo, string $key, string $value): void
+{
+    $stmt = $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (:key, :value) ON DUPLICATE KEY UPDATE setting_value = :updated_value, updated_at = CURRENT_TIMESTAMP');
+    $stmt->execute([':key' => $key, ':value' => $value, ':updated_value' => $value]);
+}
+
 function slugify(string $value): string
 {
-    $value = strtolower(trim((string) $value));
+    $value = strtolower(trim($value));
     $value = preg_replace('/[^a-z0-9]+/i', '-', $value);
-    $value = preg_replace('/-+/', '-', $value);
-    $value = trim((string) $value, '-');
-
+    $value = trim((string) preg_replace('/-+/', '-', (string) $value), '-');
     return $value !== '' ? $value : 'item-' . bin2hex(random_bytes(4));
 }
 
 function sanitizeSlug(string $value): string
 {
-    $value = trim((string) $value);
-    $value = strtolower($value);
+    $value = strtolower(trim($value));
     $value = preg_replace('/[^a-z0-9-]+/', '-', $value);
-    $value = preg_replace('/-+/', '-', $value);
-    return trim((string) $value, '-');
+    return trim((string) preg_replace('/-+/', '-', (string) $value), '-');
 }
 
 function isSafeMenuUrl(string $url): bool
 {
-    $url = trim((string) $url);
-    if ($url === '') {
-        return false;
+    $url = trim($url);
+    if ($url === '' || preg_match('/^(javascript|data|vbscript):/i', $url)) return false;
+    foreach (['http://', 'https://', '/', '#', 'mailto:', 'tel:'] as $prefix) {
+        if (str_starts_with(strtolower($url), $prefix)) return true;
     }
-
-    $lower = strtolower($url);
-    if (str_starts_with($lower, 'javascript:') || str_starts_with($lower, 'data:') || str_starts_with($lower, 'vbscript:')) {
-        return false;
-    }
-
-    $allowedPrefixes = ['http://', 'https://', '/', '#', 'mailto:', 'tel:'];
-    foreach ($allowedPrefixes as $prefix) {
-        if (str_starts_with($lower, $prefix)) {
-            return true;
-        }
-    }
-
-    return preg_match('/^[a-zA-Z0-9_\\/\\-\\.?#=&%]+$/', $url) === 1;
+    return preg_match('/^[a-zA-Z0-9_\/\-.?#=&%]+$/', $url) === 1;
 }
 
 function validMenuPosition(string $position): bool
@@ -150,115 +152,53 @@ function validMenuPosition(string $position): bool
     return in_array($position, ['header', 'footer', 'sidebar'], true);
 }
 
-function uploadNewsImage(array $file): ?string
+function isReservedRoute(string $value): bool
 {
-    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
-        return null;
-    }
+    return in_array(strtolower(trim($value)), ['admin', 'login', 'register', 'dashboard', 'logout', 'news', 'category', 'tag', 'author', 'user', 'search', 'install', '404', 'submit', 'index'], true);
+}
 
-    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
-        throw new RuntimeException('Image upload failed.');
-    }
-
-    $tmpName = $file['tmp_name'] ?? '';
-    if (!is_uploaded_file($tmpName)) {
-        throw new RuntimeException('Invalid upload source.');
-    }
-
-    $size = (int) ($file['size'] ?? 0);
-    if ($size <= 0 || $size > 5 * 1024 * 1024) {
-        throw new RuntimeException('Images must be between 1 byte and 5 MB.');
-    }
-
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->file($tmpName);
-    if ($mime === false) {
-        throw new RuntimeException('Unable to detect file type.');
-    }
-
-    $allowed = [
-        'image/jpeg' => 'jpg',
-        'image/png' => 'png',
-        'image/webp' => 'webp',
-        'image/gif' => 'gif',
-    ];
-
-    if (!isset($allowed[$mime])) {
-        throw new RuntimeException('Only JPG, PNG, WEBP, and GIF images are allowed.');
-    }
-
-    $directory = __DIR__ . '/../uploads/news';
-    if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
-        throw new RuntimeException('Upload directory is unavailable.');
-    }
-
-    $name = bin2hex(random_bytes(16)) . '.' . $allowed[$mime];
-    $destination = $directory . '/' . $name;
-
-    if (!move_uploaded_file($tmpName, $destination)) {
-        throw new RuntimeException('Could not save the image.');
-    }
-
-    return 'uploads/news/' . $name;
+function generateSecureToken(int $length = 32): string
+{
+    return bin2hex(random_bytes(max(16, (int) ceil($length / 2))));
 }
 
 function generateUniqueSlug(PDO $pdo, string $table, string $column, string $value, ?int $id = null): string
 {
-    $base = sanitizeSlug($value);
-    if ($base === '') {
-        $base = 'untitled';
-    }
-
-    $candidate = $base;
-    $counter = 2;
-
-    while (true) {
+    $base = sanitizeSlug($value) ?: 'untitled';
+    for ($counter = 0; ; $counter++) {
+        $candidate = $counter === 0 ? $base : $base . '-' . ($counter + 1);
         $sql = 'SELECT id FROM ' . $table . ' WHERE ' . $column . ' = :slug' . ($id !== null ? ' AND id != :id' : '');
         $stmt = $pdo->prepare($sql);
         $params = [':slug' => $candidate];
-        if ($id !== null) {
-            $params[':id'] = $id;
-        }
+        if ($id !== null) $params[':id'] = $id;
         $stmt->execute($params);
-
-        if (!$stmt->fetch()) {
-            return $candidate;
-        }
-
-        $candidate = $base . '-' . $counter;
-        $counter++;
+        if (!$stmt->fetch()) return $candidate;
     }
 }
 
-function isReservedRoute(string $value): bool
+function uploadNewsImage(array $file): ?string
 {
-    $reserved = [
-        'admin', 'login', 'register', 'dashboard', 'logout', 'news', 'category', 'tag',
-        'author', 'user', 'search', 'install', '404', 'submit', 'index'
-    ];
-
-    $value = strtolower(trim((string) $value));
-    return in_array($value, $reserved, true);
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return null;
+    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) throw new RuntimeException('Image upload failed.');
+    $tmpName = (string) ($file['tmp_name'] ?? '');
+    if (!is_uploaded_file($tmpName)) throw new RuntimeException('Invalid upload source.');
+    if ((int) ($file['size'] ?? 0) <= 0 || (int) $file['size'] > 5 * 1024 * 1024) throw new RuntimeException('Images must be between 1 byte and 5 MB.');
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($tmpName);
+    $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+    if (!isset($allowed[$mime])) throw new RuntimeException('Only JPG, PNG, WEBP, and GIF images are allowed.');
+    $directory = __DIR__ . '/../uploads/news';
+    if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) throw new RuntimeException('Upload directory is unavailable.');
+    $name = bin2hex(random_bytes(16)) . '.' . $allowed[$mime];
+    if (!move_uploaded_file($tmpName, $directory . '/' . $name)) throw new RuntimeException('Could not save the image.');
+    return 'uploads/news/' . $name;
 }
 
 function rateLimitCheck(string $key): bool
 {
-    $limit = 5;
-    $window = 300;
     $now = time();
     $bucket = $_SESSION['rate_limit'][$key] ?? ['count' => 0, 'timestamp' => $now];
-
-    if (($now - (int) $bucket['timestamp']) > $window) {
-        $bucket = ['count' => 0, 'timestamp' => $now];
-    }
-
-    if ((int) $bucket['count'] >= $limit) {
-        return false;
-    }
-
-    $bucket['count'] = (int) $bucket['count'] + 1;
-    $bucket['timestamp'] = $now;
-    $_SESSION['rate_limit'][$key] = $bucket;
-
+    if ($now - (int) $bucket['timestamp'] > 300) $bucket = ['count' => 0, 'timestamp' => $now];
+    if ((int) $bucket['count'] >= 5) return false;
+    $_SESSION['rate_limit'][$key] = ['count' => (int) $bucket['count'] + 1, 'timestamp' => $now];
     return true;
 }

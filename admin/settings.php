@@ -1,57 +1,21 @@
 <?php
-
 declare(strict_types=1);
-
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/email.php';
 requireLogin('../login.php');
 requireRole('super_admin', '../login.php');
-
-$pdo = Database::getInstance();
-$allowed = ['site_name', 'site_logo', 'site_favicon', 'header_text', 'footer_copyright', 'breaking_news', 'email_provider', 'smtp_host', 'smtp_port', 'smtp_encryption', 'smtp_username', 'smtp_password', 'smtp_from_name', 'smtp_from_email', 'site_url', 'admin_alert_email'];
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    verifyCsrf();
-    if (($_POST['action'] ?? '') === 'test_email') {
-        $to = trim((string) ($_POST['test_email'] ?? ''));
-        $ok = filter_var($to, FILTER_VALIDATE_EMAIL) && sendEmail($to, APP_NAME . ' SMTP test', '<p>SMTP test successful.</p>');
-        setFlash($ok ? 'success' : 'danger', $ok ? 'Test email sent successfully.' : 'Test email failed. Check SMTP settings and server logs.');
-        redirect('settings.php');
-    }
-    foreach ($_POST['setting'] ?? [] as $key => $value) {
-        $key = (string) $key;
-        if (!in_array($key, $allowed, true)) continue;
-        $value = trim((string) $value);
-        if ($key === 'smtp_password' && $value === '') continue;
-        if ($key === 'smtp_port' && (!ctype_digit($value) || (int) $value < 1 || (int) $value > 65535)) continue;
-        if ($key === 'smtp_encryption' && !in_array($value, ['tls', 'ssl', 'none'], true)) continue;
-        if (in_array($key, ['smtp_from_email', 'admin_alert_email'], true) && $value !== '' && !filter_var($value, FILTER_VALIDATE_EMAIL)) continue;
-        $stmt = $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (:key, :value) ON DUPLICATE KEY UPDATE setting_value = :value_update, updated_at = CURRENT_TIMESTAMP');
-        $stmt->execute([':key' => $key, ':value' => $value, ':value_update' => $value]);
-    }
-    setFlash('success', 'Settings updated successfully.');
-    redirect('settings.php');
+$pdo=Database::getInstance();
+$provider=(string)($_POST['provider']??getSetting('email_provider','')); $defaults=mailDefaults($provider);
+if($_SERVER['REQUEST_METHOD']==='POST'){
+ verifyCsrf(); $action=(string)($_POST['action']??'');
+ if($action==='save'){
+  $provider=(string)($_POST['provider']??'custom');$host=trim((string)($_POST['smtp_host']??''));$port=(int)($_POST['smtp_port']??0);$encryption=(string)($_POST['smtp_encryption']??'tls');$username=trim((string)($_POST['smtp_username']??''));$password=(string)($_POST['smtp_password']??'');$from=trim((string)($_POST['smtp_from_email']??''));$name=trim((string)($_POST['smtp_from_name']??APP_NAME));
+  if(!in_array($provider,['gmail','zoho','custom'],true)||$host===''||$port<1||$port>65535||!in_array($encryption,['tls','ssl','none'],true)||!filter_var($username,FILTER_VALIDATE_EMAIL)||!filter_var($from,FILTER_VALIDATE_EMAIL)||($password===''&&getSetting('smtp_password','')==='')){setFlash('danger','SMTP তথ্য সঠিকভাবে পূরণ করুন।');redirect('settings.php');}
+  foreach(['email_provider'=>$provider,'smtp_host'=>$host,'smtp_port'=>(string)$port,'smtp_encryption'=>$encryption,'smtp_username'=>$username,'smtp_from_email'=>$from,'smtp_from_name'=>$name,'email_smtp_validated'=>'0','email_service_enabled'=>'0'] as $key=>$value)setSetting($pdo,$key,$value);if($password!=='')setSetting($pdo,'smtp_password',$password);setFlash('success','SMTP সেটিংস সংরক্ষিত হয়েছে। এখন পরীক্ষা করুন।');redirect('settings.php');
+ }
+ if($action==='test'){ $to=trim((string)($_POST['test_email']??''));$ok=filter_var($to,FILTER_VALIDATE_EMAIL)&&sendSmtpMail($to,APP_NAME.' SMTP test','<p>SMTP test successful.</p>',getMailConfig());setSetting($pdo,'email_smtp_validated',$ok?'1':'0');setFlash($ok?'success':'danger',$ok?'SMTP পরীক্ষা সফল হয়েছে।':'SMTP পরীক্ষা ব্যর্থ হয়েছে; তথ্য ও হোস্টের SMTP অনুমতি যাচাই করুন।');redirect('settings.php'); }
+ if($action==='toggle'){if(getSetting('email_smtp_validated','0')!=='1'){setFlash('danger','সফল SMTP পরীক্ষা ছাড়া Email Service চালু করা যাবে না।');}else{setSetting($pdo,'email_service_enabled',getSetting('email_service_enabled','0')==='1'?'0':'1');setFlash('success','Email Service-এর অবস্থা পরিবর্তন হয়েছে।');}redirect('settings.php');}
 }
-
-$rows = $pdo->query('SELECT setting_key, setting_value FROM settings')->fetchAll();
-$settings = [];
-foreach ($rows as $row) $settings[(string) $row['setting_key']] = (string) ($row['setting_value'] ?? '');
-$flash = getFlash();
-function settingValue(array $settings, string $key, string $default = ''): string { return $settings[$key] ?? $default; }
-?>
-<!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Site Settings | <?= e(APP_NAME) ?></title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head>
-<body class="bg-light"><main class="container py-5"><div class="d-flex justify-content-between align-items-center mb-4"><h2>Site Settings</h2><a href="index.php" class="btn btn-outline-secondary">Dashboard</a></div>
-<?php if ($flash): ?><div class="alert alert-<?= e((string) $flash['type']) ?>"><?= e((string) $flash['message']) ?></div><?php endif; ?>
-<form method="post" class="row g-3"><input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>">
-<div class="col-md-6"><label class="form-label">Site name</label><input class="form-control" name="setting[site_name]" value="<?= e(settingValue($settings, 'site_name', APP_NAME)) ?>"></div>
-<div class="col-md-6"><label class="form-label">Site URL</label><input class="form-control" type="url" name="setting[site_url]" value="<?= e(settingValue($settings, 'site_url')) ?>" required></div>
-<div class="col-md-6"><label class="form-label">SMTP host</label><input class="form-control" name="setting[smtp_host]" value="<?= e(settingValue($settings, 'smtp_host', 'smtp.zoho.com')) ?>"></div>
-<div class="col-md-3"><label class="form-label">SMTP port</label><input class="form-control" type="number" name="setting[smtp_port]" value="<?= e(settingValue($settings, 'smtp_port', '587')) ?>"></div>
-<div class="col-md-3"><label class="form-label">Encryption</label><select class="form-select" name="setting[smtp_encryption]"><option value="tls" <?= settingValue($settings, 'smtp_encryption', 'tls') === 'tls' ? 'selected' : '' ?>>TLS</option><option value="ssl" <?= settingValue($settings, 'smtp_encryption') === 'ssl' ? 'selected' : '' ?>>SSL</option><option value="none" <?= settingValue($settings, 'smtp_encryption') === 'none' ? 'selected' : '' ?>>None</option></select></div>
-<div class="col-md-6"><label class="form-label">SMTP username</label><input class="form-control" name="setting[smtp_username]" value="<?= e(settingValue($settings, 'smtp_username')) ?>"></div>
-<div class="col-md-6"><label class="form-label">SMTP app password</label><input class="form-control" type="password" name="setting[smtp_password]" autocomplete="new-password"><div class="form-text">Leave blank to keep the existing password.</div></div>
-<div class="col-md-6"><label class="form-label">From email</label><input class="form-control" type="email" name="setting[smtp_from_email]" value="<?= e(settingValue($settings, 'smtp_from_email')) ?>"></div>
-<div class="col-md-6"><label class="form-label">Admin alert email</label><input class="form-control" type="email" name="setting[admin_alert_email]" value="<?= e(settingValue($settings, 'admin_alert_email')) ?>"></div>
-<div class="col-12"><button class="btn btn-primary" type="submit">Save settings</button></div></form>
-<hr class="my-4"><h4>Test SMTP</h4><form method="post" class="row g-3"><input type="hidden" name="csrf_token" value="<?= e(csrfToken()) ?>"><input type="hidden" name="action" value="test_email"><div class="col-md-8"><input class="form-control" type="email" name="test_email" placeholder="recipient@example.com" required></div><div class="col-md-4"><button class="btn btn-outline-primary w-100" type="submit">Send test email</button></div></form></main></body></html>
+$rows=$pdo->query('SELECT setting_key,setting_value FROM settings')->fetchAll();$settings=[];foreach($rows as $row)$settings[(string)$row['setting_key']]=(string)($row['setting_value']??'');$flash=getFlash();$enabled=($settings['email_service_enabled']??'0')==='1';$validated=($settings['email_smtp_validated']??'0')==='1';
+function settingValue(array $settings,string $key,string $default=''):string{return $settings[$key]??$default;}
+?><!doctype html><html lang="bn"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ইমেইল সেটিংস | <?=e(APP_NAME)?></title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light"><main class="container py-5"><div class="d-flex justify-content-between align-items-center mb-4"><h2>ইমেইল ও নিরাপত্তা সেটিংস</h2><a href="index.php" class="btn btn-outline-secondary">ড্যাশবোর্ড</a></div><?php if($flash):?><div class="alert alert-<?=e((string)$flash['type'])?>"><?=e((string)$flash['message'])?></div><?php endif;?><div class="alert alert-<?=$enabled?'success':'warning'?>">Email Service: <strong><?=$enabled?'চালু':'বন্ধ'?></strong> · SMTP যাচাই: <strong><?=$validated?'সফল':'অসম্পন্ন'?></strong><br>সফল SMTP পরীক্ষা ছাড়া Email Service বা ইমেইল-ভিত্তিক 2FA চালু করা যাবে না।</div><form method="post" class="card card-body mb-4"><input type="hidden" name="csrf_token" value="<?=e(csrfToken())?>"><input type="hidden" name="action" value="save"><div class="row g-3"><div class="col-md-4"><label class="form-label">Provider</label><select class="form-select" name="provider"><option value="gmail" <?=settingValue($settings,'email_provider')==='gmail'?'selected':''?>>Gmail</option><option value="zoho" <?=settingValue($settings,'email_provider')==='zoho'?'selected':''?>>Zoho</option><option value="custom" <?=in_array(settingValue($settings,'email_provider'),['','custom'],true)?'selected':''?>>Custom SMTP</option></select></div><div class="col-md-8"><label class="form-label">SMTP Host</label><input class="form-control" name="smtp_host" value="<?=e(settingValue($settings,'smtp_host',$defaults['host']))?>" required></div><div class="col-md-3"><label class="form-label">Port</label><input class="form-control" name="smtp_port" value="<?=e(settingValue($settings,'smtp_port',(string)$defaults['port']))?>" required></div><div class="col-md-3"><label class="form-label">Encryption</label><select class="form-select" name="smtp_encryption"><option value="tls" <?=settingValue($settings,'smtp_encryption','tls')==='tls'?'selected':''?>>TLS</option><option value="ssl" <?=settingValue($settings,'smtp_encryption')==='ssl'?'selected':''?>>SSL</option><option value="none" <?=settingValue($settings,'smtp_encryption')==='none'?'selected':''?>>None</option></select></div><div class="col-md-6"><label class="form-label">SMTP Username</label><input class="form-control" type="email" name="smtp_username" value="<?=e(settingValue($settings,'smtp_username'))?>" required></div><div class="col-md-6"><label class="form-label">App Password</label><input class="form-control" type="password" name="smtp_password" autocomplete="new-password"><small>আগের পাসওয়ার্ড রাখতে চাইলে ফাঁকা রাখুন।</small></div><div class="col-md-3"><label class="form-label">From Email</label><input class="form-control" type="email" name="smtp_from_email" value="<?=e(settingValue($settings,'smtp_from_email'))?>" required></div><div class="col-md-3"><label class="form-label">From Name</label><input class="form-control" name="smtp_from_name" value="<?=e(settingValue($settings,'smtp_from_name',APP_NAME))?>"></div><div class="col-12"><button class="btn btn-primary">সেটিংস সংরক্ষণ</button></div></div></form><form method="post" class="card card-body mb-3"><input type="hidden" name="csrf_token" value="<?=e(csrfToken())?>"><input type="hidden" name="action" value="test"><label class="form-label">পরীক্ষার ইমেইল</label><div class="input-group"><input class="form-control" type="email" name="test_email" required><button class="btn btn-outline-primary">SMTP পরীক্ষা</button></div></form><form method="post"><input type="hidden" name="csrf_token" value="<?=e(csrfToken())?>"><input type="hidden" name="action" value="toggle"><button class="btn btn-<?=$enabled?'danger':'success'?>"><?=$enabled?'Email Service বন্ধ করুন':'Email Service চালু করুন'?></button></form></main></body></html>
